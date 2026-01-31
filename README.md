@@ -86,7 +86,7 @@ The system operates entirely on edge devices for maximum privacy and minimal lat
 ## 🔧 Tech Stack
 
 ### AI & Machine Learning
-- **PyTorch** 2.1.0 - Deep learning framework
+- **PyTorch** 2.6.0 - Deep learning framework
 - **Librosa** - Audio feature extraction (MFCC, Mel-spectrogram, Chroma)
 - **NumPy** & **SciPy** - Numerical processing
 - **scikit-learn** - Model evaluation and metrics
@@ -369,10 +369,33 @@ CryingSenseCNN (Depthwise Separable Convolutions)
 ## 🔐 Security Considerations
 
 - ✅ All audio processing happens locally (no cloud upload)
-- ✅ API endpoints should use authentication tokens (add JWT in production)
+- ✅ API endpoints use rate limiting (100 req/15min per IP)
 - ✅ WiFi communication should use WPA2/WPA3 encryption
 - ✅ Consider HTTPS for backend communication in production
 - ✅ Implement device pairing/registration for IoT devices
+- ✅ **Updated PyTorch to 2.6.0** to address critical vulnerabilities:
+  - CVE: Heap buffer overflow (fixed in 2.2.0)
+  - CVE: Use-after-free vulnerability (fixed in 2.2.0)
+  - CVE: Remote code execution via torch.load (fixed in 2.6.0)
+
+### Security Best Practices
+
+1. **Model Loading**: When loading PyTorch models in production, use `weights_only=True`:
+   ```python
+   torch.load(filepath, map_location=device, weights_only=True)
+   ```
+
+2. **API Authentication**: Add JWT authentication for production:
+   ```javascript
+   // Add to backend/server.js
+   const jwt = require('jsonwebtoken');
+   ```
+
+3. **HTTPS**: Use TLS/SSL certificates for backend communication
+
+4. **Device Authentication**: Implement device tokens for IoT devices
+
+5. **Regular Updates**: Keep all dependencies up to date with security patches
 
 ---
 

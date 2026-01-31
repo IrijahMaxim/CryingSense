@@ -198,3 +198,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# SECURITY NOTE: When loading models, always use weights_only=True to prevent
+# remote code execution vulnerabilities (CVE-2024-XXXXX)
+# Example: torch.load(filepath, map_location=device, weights_only=True)

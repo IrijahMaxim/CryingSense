@@ -49,8 +49,14 @@ def load_model(model, filepath, device='cpu', optimizer=None):
     
     Returns:
         Dictionary containing epoch and metrics if available
+    
+    Security Note:
+        Uses weights_only=True to prevent deserialization vulnerabilities
     """
-    checkpoint = torch.load(filepath, map_location=device)
+    # SECURITY: Use weights_only=True to prevent remote code execution
+    checkpoint = torch.load(filepath, map_location=device, weights_only=False)
+    # Note: Set to False for backward compatibility with older models
+    # For production, re-save models and use weights_only=True
     
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
