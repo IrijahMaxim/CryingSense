@@ -1,0 +1,57 @@
+{
+  "device": {
+    "id": "ESP32_001",
+    "name": "CryingSense ESP32 Transmitter",
+    "type": "ESP32-WROOM-32",
+    "location": "Baby Room",
+    "firmware_version": "1.0.0"
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "bits_per_sample": 16,
+    "channels": 1,
+    "capture_duration": 5.0,
+    "buffer_size": 4096,
+    "detection_threshold": 0.1
+  },
+  "i2s_pins": {
+    "sck": 14,
+    "ws": 15,
+    "sd": 32
+  },
+  "network": {
+    "wifi_ssid": "YOUR_WIFI_SSID",
+    "wifi_password": "YOUR_WIFI_PASSWORD",
+    "gateway_host": "raspberrypi.local",
+    "gateway_port": 5000,
+    "mqtt_broker": "localhost",
+    "mqtt_port": 1883,
+    "mqtt_username": null,
+    "mqtt_password": null
+  },
+  "communication": {
+    "protocol": "http",
+    "retry_attempts": 3,
+    "retry_delay": 2,
+    "timeout": 10
+  },
+  "raspberry_pi": {
+    "device_id": "RPI_GATEWAY_001",
+    "type": "Raspberry Pi 3 B+",
+    "model_path": "/home/pi/CryingSense/model/saved_models/cryingsense_cnn.pth",
+    "use_quantized": true,
+    "confidence_threshold": 0.6,
+    "backend_url": "http://localhost:3000"
+  },
+  "operation": {
+    "detection_interval": 2.0,
+    "continuous_mode": true,
+    "log_level": "INFO",
+    "enable_local_storage": false
+  },
+  "security": {
+    "enable_encryption": false,
+    "device_token": null,
+    "api_key": null
+  }
+}
