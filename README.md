@@ -18,7 +18,7 @@ The system consists of three main components:
 3. **Mobile Application** - Displays alerts and interpretations to caregivers
 
 ## Tech Stack
-- **AI Framework**: PyTorch 2.1.0
+- **AI Framework**: PyTorch 2.6.0+
 - **Audio Processing**: Librosa (MFCC, Mel-spectrogram, Chroma features)
 - **IoT Hardware**: ESP32 + Raspberry Pi 3B+
 - **Backend**: Node.js + Express.js
@@ -59,7 +59,7 @@ CryingSense/
 
 ### Prerequisites
 - Python 3.11+
-- PyTorch 2.1.0
+- PyTorch 2.6.0+
 - Librosa
 - Node.js 20.0.0+
 - MongoDB 7.0+
