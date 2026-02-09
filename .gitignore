@@ -53,6 +53,12 @@ experiments/logs/
 experiments/confusion_matrices/
 experiments/performance_reports/
 
+# Audio test recordings
+audio_test/recordings/
+*.wav
+*.mp3
+*.flac
+
 # OS
 .DS_Store
 Thumbs.db
