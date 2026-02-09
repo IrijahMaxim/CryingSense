@@ -77,17 +77,17 @@ def get_file_groups(data_dir, classes):
     return groups
 
 
-def split_dataset(data_dir, output_dir, train_ratio=0.70, val_ratio=0.15, 
-                 test_ratio=0.15, random_seed=42):
+def split_dataset(data_dir, output_dir, train_ratio=0.80, val_ratio=0.10, 
+                 test_ratio=0.10, random_seed=42):
     """
     Split dataset into train/validation/test sets by session.
     
     Args:
         data_dir: Directory with cleaned audio files
         output_dir: Directory to save split information
-        train_ratio: Proportion for training set (default: 0.70)
-        val_ratio: Proportion for validation set (default: 0.15)
-        test_ratio: Proportion for test set (default: 0.15)
+        train_ratio: Proportion for training set (default: 0.80)
+        val_ratio: Proportion for validation set (default: 0.10)
+        test_ratio: Proportion for test set (default: 0.10)
         random_seed: Random seed for reproducibility (default: 42)
     
     Returns:
@@ -190,9 +190,9 @@ def main():
     print("="*60)
     print(f"Input directory: {data_dir}")
     print(f"Output directory: {output_dir}")
-    print(f"Train ratio: 70%")
-    print(f"Validation ratio: 15%")
-    print(f"Test ratio: 15%")
+    print(f"Train ratio: 80%")
+    print(f"Validation ratio: 10%")
+    print(f"Test ratio: 10%")
     print("="*60)
     print()
     
