@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import numpy as np
 import torch
@@ -8,6 +9,9 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from tqdm import tqdm
+
+# Add project root to Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from model.models.cnn_model import CryingSenseCNN
 import matplotlib.pyplot as plt
 
@@ -17,25 +21,80 @@ def get_label_from_path(path):
     return os.path.basename(os.path.dirname(path))
 
 class CryingSenseDataset(Dataset):
-    def __init__(self, file_list, label_map, augment=False):
-        self.file_list = file_list
+    def __init__(self, file_list, label_map, feature_base_dir, augment=False):
+        self.file_list = file_list  # List of MFCC file paths (used as reference)
         self.label_map = label_map
+        self.feature_base_dir = feature_base_dir
         self.augment = augment
     
     def __len__(self):
         return len(self.file_list)
     
     def __getitem__(self, idx):
-        x = np.load(self.file_list[idx])
+        # Load all feature types and combine them
+        mfcc_path = self.file_list[idx]
+        
+        # Construct paths for other features (same relative path, different feature dir)
+        rel_path = os.path.relpath(mfcc_path, os.path.join(self.feature_base_dir, 'mfcc'))
+        mel_path = os.path.join(self.feature_base_dir, 'mel_spectrogram', rel_path)
+        chroma_path = os.path.join(self.feature_base_dir, 'chroma', rel_path)
+        
+        # Load features
+        mfcc = np.load(mfcc_path)
+        mel = np.load(mel_path)
+        chroma = np.load(chroma_path)
+        
+        # Combine features into 4-channel input
+        x = self._combine_features(mfcc, mel, chroma)
         x = torch.tensor(x, dtype=torch.float32)
         
         # Apply data augmentation during training
         if self.augment:
             x = self._augment_features(x)
         
-        label_name = get_label_from_path(self.file_list[idx])
+        label_name = get_label_from_path(mfcc_path)
         y = self.label_map[label_name]
         return x, y
+    
+    def _combine_features(self, mfcc, mel, chroma):
+        """Combine multiple features into a 4-channel array."""
+        # Get target dimensions
+        target_height = max(mfcc.shape[0], mel.shape[0], chroma.shape[0])
+        target_width = mfcc.shape[1]  # Time steps should be the same
+        
+        # Pad features to target height
+        mfcc_padded = self._pad_feature(mfcc, (target_height, target_width))
+        mel_padded = self._pad_feature(mel, (target_height, target_width))
+        chroma_padded = self._pad_feature(chroma, (target_height, target_width))
+        
+        # Calculate delta MFCC
+        delta_mfcc = self._compute_delta(mfcc)
+        delta_mfcc_padded = self._pad_feature(delta_mfcc, (target_height, target_width))
+        
+        # Stack into 4-channel array (channels, height, width)
+        combined = np.stack([
+            mfcc_padded,
+            mel_padded,
+            chroma_padded,
+            delta_mfcc_padded
+        ], axis=0)
+        
+        return combined
+    
+    def _pad_feature(self, feature, target_shape):
+        """Pad feature to target shape."""
+        padded = np.zeros(target_shape, dtype=feature.dtype)
+        min_h = min(feature.shape[0], target_shape[0])
+        min_w = min(feature.shape[1], target_shape[1])
+        padded[:min_h, :min_w] = feature[:min_h, :min_w]
+        return padded
+    
+    def _compute_delta(self, feature):
+        """Compute delta (first derivative) of feature."""
+        # Simple delta: difference between adjacent frames
+        delta = np.zeros_like(feature)
+        delta[:, 1:] = feature[:, 1:] - feature[:, :-1]
+        return delta
     
     def _augment_features(self, features):
         """Apply data augmentation to features."""
@@ -56,12 +115,22 @@ class CryingSenseDataset(Dataset):
         
         return features
 
-def get_file_list_and_labels(feature_dir):
+def get_file_list_and_labels(feature_base_dir):
+    """Get file list from MFCC directory (used as reference for all features)."""
+    mfcc_dir = os.path.join(feature_base_dir, 'mfcc')
+    
+    if not os.path.exists(mfcc_dir):
+        return [], {}
+    
     file_list = []
-    for root, _, files in os.walk(feature_dir):
+    for root, _, files in os.walk(mfcc_dir):
         for file in files:
             if file.endswith('.npy'):
                 file_list.append(os.path.join(root, file))
+    
+    if not file_list:
+        return [], {}
+    
     labels = sorted(list(set(get_label_from_path(f) for f in file_list)))
     label_map = {label: i for i, label in enumerate(labels)}
     return file_list, label_map
@@ -278,7 +347,7 @@ def plot_training_history(history, save_dir):
 
 if __name__ == "__main__":
     # Configuration
-    feature_dir = "../../dataset/processed/features"
+    feature_base_dir = "../../dataset/processed/feature_extraction/cleaned"
     save_dir = "../saved_models"
     
     print("="*60)
@@ -287,7 +356,15 @@ if __name__ == "__main__":
     
     # Load data
     print("Loading dataset...")
-    file_list, label_map = get_file_list_and_labels(feature_dir)
+    file_list, label_map = get_file_list_and_labels(feature_base_dir)
+    
+    if not file_list:
+        print("Error: No feature files found!")
+        print(f"Looking in: {os.path.abspath(feature_base_dir)}")
+        print("\nPlease run feature extraction first:")
+        print("  python scripts/feature_extraction.py")
+        sys.exit(1)
+    
     print(f"Total files: {len(file_list)}")
     print(f"Classes: {list(label_map.keys())}")
     
@@ -301,8 +378,8 @@ if __name__ == "__main__":
     print(f"Validation samples: {len(val_files)}")
     
     # Create datasets with augmentation for training
-    train_dataset = CryingSenseDataset(train_files, label_map, augment=True)
-    val_dataset = CryingSenseDataset(val_files, label_map, augment=False)
+    train_dataset = CryingSenseDataset(train_files, label_map, feature_base_dir, augment=True)
+    val_dataset = CryingSenseDataset(val_files, label_map, feature_base_dir, augment=False)
     
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, 

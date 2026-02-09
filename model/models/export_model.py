@@ -8,9 +8,13 @@ Exports trained CNN models to various formats:
 """
 
 import os
+import sys
 import torch
 import torch.onnx
-from cnn_model import CryingSenseCNN
+
+# Add project root to Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from model.models.cnn_model import CryingSenseCNN
 
 
 def export_to_torchscript(model, input_shape, save_path, optimize=True):
@@ -158,10 +162,16 @@ def main():
     """Main export function."""
     import argparse
     
+    # Get script directory for resolving relative paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_model = os.path.join(script_dir, '../saved_models/cryingsense_cnn.pth')
+    default_output = os.path.join(script_dir, '../saved_models/exported')
+    
     parser = argparse.ArgumentParser(description='Export CryingSense CNN model')
-    parser.add_argument('--model', type=str, required=True, 
-                       help='Path to trained model checkpoint')
-    parser.add_argument('--output-dir', type=str, default='../saved_models/exported',
+    parser.add_argument('--model', type=str, 
+                       default=default_model,
+                       help='Path to trained model checkpoint (default: ../saved_models/cryingsense_cnn.pth)')
+    parser.add_argument('--output-dir', type=str, default=default_output,
                        help='Output directory for exported models')
     parser.add_argument('--num-classes', type=int, default=5,
                        help='Number of classes')
@@ -171,6 +181,17 @@ def main():
                        help='Export formats: torchscript, onnx, quantized (comma-separated)')
     
     args = parser.parse_args()
+    
+    # Resolve model path
+    if not os.path.isabs(args.model):
+        args.model = os.path.abspath(args.model)
+    
+    # Check if model file exists
+    if not os.path.exists(args.model):
+        print(f"Error: Model file not found: {args.model}")
+        print("\nPlease train a model first or specify the correct path with --model")
+        print("Example: python export_model.py --model path/to/your/model.pth")
+        return
     
     # Parse input shape
     input_shape = tuple(map(int, args.input_shape.split(',')))

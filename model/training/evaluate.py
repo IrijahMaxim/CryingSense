@@ -9,6 +9,7 @@ Evaluates trained CNN model on test dataset with comprehensive metrics:
 """
 
 import os
+import sys
 import json
 import time
 import numpy as np
@@ -20,6 +21,9 @@ from sklearn.metrics import (classification_report, confusion_matrix,
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# Add project root to Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from model.models.cnn_model import CryingSenseCNN
 
 
@@ -30,28 +34,75 @@ def get_label_from_path(path):
 
 class CryingSenseDataset(Dataset):
     """Dataset for loading feature files."""
-    def __init__(self, file_list, label_map):
+    def __init__(self, file_list, label_map, feature_base_dir):
         self.file_list = file_list
         self.label_map = label_map
+        self.feature_base_dir = feature_base_dir
     
     def __len__(self):
         return len(self.file_list)
     
     def __getitem__(self, idx):
-        x = np.load(self.file_list[idx])
+        # Load all feature types and combine them
+        mfcc_path = self.file_list[idx]
+        
+        # Construct paths for other features
+        rel_path = os.path.relpath(mfcc_path, os.path.join(self.feature_base_dir, 'mfcc'))
+        mel_path = os.path.join(self.feature_base_dir, 'mel_spectrogram', rel_path)
+        chroma_path = os.path.join(self.feature_base_dir, 'chroma', rel_path)
+        
+        # Load and combine features
+        mfcc = np.load(mfcc_path)
+        mel = np.load(mel_path)
+        chroma = np.load(chroma_path)
+        
+        x = self._combine_features(mfcc, mel, chroma)
         x = torch.tensor(x, dtype=torch.float32)
-        label_name = get_label_from_path(self.file_list[idx])
+        
+        label_name = get_label_from_path(mfcc_path)
         y = self.label_map[label_name]
         return x, y
+    
+    def _combine_features(self, mfcc, mel, chroma):
+        """Combine features into 4-channel array."""
+        target_height = max(mfcc.shape[0], mel.shape[0], chroma.shape[0])
+        target_width = mfcc.shape[1]
+        
+        mfcc_padded = self._pad_feature(mfcc, (target_height, target_width))
+        mel_padded = self._pad_feature(mel, (target_height, target_width))
+        chroma_padded = self._pad_feature(chroma, (target_height, target_width))
+        
+        delta_mfcc = np.zeros_like(mfcc)
+        delta_mfcc[:, 1:] = mfcc[:, 1:] - mfcc[:, :-1]
+        delta_mfcc_padded = self._pad_feature(delta_mfcc, (target_height, target_width))
+        
+        return np.stack([mfcc_padded, mel_padded, chroma_padded, delta_mfcc_padded], axis=0)
+    
+    def _pad_feature(self, feature, target_shape):
+        """Pad feature to target shape."""
+        padded = np.zeros(target_shape, dtype=feature.dtype)
+        min_h = min(feature.shape[0], target_shape[0])
+        min_w = min(feature.shape[1], target_shape[1])
+        padded[:min_h, :min_w] = feature[:min_h, :min_w]
+        return padded
 
 
-def get_file_list_and_labels(feature_dir):
+def get_file_list_and_labels(feature_base_dir):
     """Get all feature files and create label mapping."""
+    mfcc_dir = os.path.join(feature_base_dir, 'mfcc')
+    
+    if not os.path.exists(mfcc_dir):
+        return [], {}
+    
     file_list = []
-    for root, _, files in os.walk(feature_dir):
+    for root, _, files in os.walk(mfcc_dir):
         for file in files:
             if file.endswith('.npy'):
                 file_list.append(os.path.join(root, file))
+    
+    if not file_list:
+        return [], {}
+    
     labels = sorted(list(set(get_label_from_path(f) for f in file_list)))
     label_map = {label: i for i, label in enumerate(labels)}
     return file_list, label_map
@@ -205,7 +256,7 @@ def print_evaluation_results(results):
 def main():
     """Main evaluation function."""
     # Configuration
-    feature_dir = "../../dataset/processed/features"
+    feature_base_dir = "../../dataset/processed/feature_extraction/cleaned"
     model_path = "../saved_models/cryingsense_cnn_best.pth"
     results_dir = "../../experiments/performance_reports"
     cm_dir = "../../experiments/confusion_matrices"
@@ -225,13 +276,19 @@ def main():
     
     # Load data
     print("\nLoading dataset...")
-    file_list, label_map = get_file_list_and_labels(feature_dir)
+    file_list, label_map = get_file_list_and_labels(feature_base_dir)
+    
+    if not file_list:
+        print("Error: No feature files found!")
+        print(f"Looking in: {os.path.abspath(feature_base_dir)}")
+        return
+    
     label_names = [name for name, _ in sorted(label_map.items(), key=lambda x: x[1])]
     
     # For evaluation, use test split (last 10% of data)
     # In production, this should load from dataset_split.json
     _, test_files = train_test_split(
-        file_list, test_size=0.10, random_seed=42,
+        file_list, test_size=0.10, random_state=42,
         stratify=[get_label_from_path(f) for f in file_list]
     )
     
@@ -239,7 +296,7 @@ def main():
     print(f"Classes: {label_names}")
     
     # Create dataset and loader
-    test_dataset = CryingSenseDataset(test_files, label_map)
+    test_dataset = CryingSenseDataset(test_files, label_map, feature_base_dir)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, 
                             num_workers=2, pin_memory=True)
     
