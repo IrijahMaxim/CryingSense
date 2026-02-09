@@ -5,9 +5,9 @@ This module splits the preprocessed dataset into training, validation, and test 
 while ensuring that samples from the same recording session don't appear in multiple splits.
 
 Split ratios:
-- Training: 70%
-- Validation: 15%
-- Test: 15%
+- Training: 80%
+- Validation: 10%
+- Test: 10%
 """
 
 import os
