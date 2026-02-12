@@ -19,7 +19,6 @@ onnxruntime>=1.16.0
 
 # Audio Capture (IoT Device)
 pyaudio>=0.2.13
-wave
 
 # Utilities
 tqdm>=4.65.0

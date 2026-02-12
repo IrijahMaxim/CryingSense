@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -91,7 +92,19 @@ def get_file_list_and_labels(feature_base_dir):
     return file_list, label_map
 
 if __name__ == "__main__":
-    feature_base_dir = "../../dataset/processed/feature_extraction/cleaned"
+    # Configuration - use absolute paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '../..'))
+    
+    feature_base_dir = os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned')
+    model_path = os.path.join(project_root, 'model', 'saved_models', 'cryingsense_cnn_best.pth')
+    
+    print("="*60)
+    print("CryingSense CNN Validation")
+    print("="*60)
+    
+    # Load dataset
+    print("Loading dataset...")
     file_list, label_map = get_file_list_and_labels(feature_base_dir)
     
     if not file_list:
@@ -101,22 +114,64 @@ if __name__ == "__main__":
         print("  python scripts/feature_extraction.py")
         sys.exit(1)
     
-    val_files = file_list  # Use all files for evaluation or split as needed
-    val_dataset = CryingSenseDataset(val_files, label_map, feature_base_dir)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)
+    print(f"Total files: {len(file_list)}")
+    print(f"Classes: {list(label_map.keys())}")
+    print("="*60)
+    
+    # Load model
+    print("Loading model...")
+    if not os.path.exists(model_path):
+        print(f"Error: Model not found at {model_path}")
+        print("\nPlease train the model first:")
+        print("  python model/training/train.py")
+        sys.exit(1)
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = CryingSenseCNN(num_classes=len(label_map)).to(device)
-    model.load_state_dict(torch.load("../saved_models/cryingsense_cnn.pth", map_location=device))
+    
+    checkpoint = torch.load(model_path, map_location=device)
+    if 'model_state_dict' in checkpoint:
+        # Initialize the model with a dummy forward pass to create _fc1 layer
+        dummy_input = torch.randn(1, 4, 128, 216).to(device)
+        _ = model(dummy_input)
+        
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
+        print(f"Training accuracy: {checkpoint.get('train_acc', 0):.4f}")
+        print(f"Validation accuracy: {checkpoint.get('val_acc', 0):.4f}")
+    else:
+        # Initialize the model with a dummy forward pass to create _fc1 layer
+        dummy_input = torch.randn(1, 4, 128, 216).to(device)
+        _ = model(dummy_input)
+        
+        model.load_state_dict(checkpoint)
+    
+    print(f"Device: {device}")
+    print("="*60)
+    
+    # Create validation dataset and loader
+    val_files = file_list  # Use all files for evaluation or split as needed
+    val_dataset = CryingSenseDataset(val_files, label_map, feature_base_dir)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2, pin_memory=True)
+    
+    # Evaluate
+    print("Evaluating model...")
     model.eval()
     all_preds, all_labels = [], []
+    
     with torch.no_grad():
-        for x, y in val_loader:
+        for x, y in tqdm(val_loader, desc="Validating"):
             x = x.to(device)
             out = model(x)
             preds = out.argmax(1).cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(y.numpy())
-    print("Classification Report:")
+    
+    print("\n" + "="*60)
+    print("Validation Results")
+    print("="*60)
+    print("\nClassification Report:")
     print(classification_report(all_labels, all_preds, target_names=list(label_map.keys())))
-    print("Confusion Matrix:")
+    print("\nConfusion Matrix:")
     print(confusion_matrix(all_labels, all_preds))
+    print("="*60)

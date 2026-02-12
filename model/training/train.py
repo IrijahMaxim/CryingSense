@@ -155,7 +155,7 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
     
     # Learning rate scheduler: ReduceLROnPlateau
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=5, verbose=True
+        optimizer, mode='max', factor=0.5, patience=5
     )
     
     # Early stopping variables
@@ -347,8 +347,12 @@ def plot_training_history(history, save_dir):
 
 if __name__ == "__main__":
     # Configuration
-    feature_base_dir = "../../dataset/processed/feature_extraction/cleaned"
-    save_dir = "../saved_models"
+    # Get the project root directory (2 levels up from this script)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '../..'))
+    
+    feature_base_dir = os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned')
+    save_dir = os.path.join(project_root, 'model', 'saved_models')
     
     print("="*60)
     print("CryingSense CNN Training")

@@ -21,6 +21,7 @@ from sklearn.metrics import (classification_report, confusion_matrix,
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -132,7 +133,7 @@ def evaluate_model(model, test_loader, device, label_names, confidence_threshold
     
     print("Running evaluation...")
     with torch.no_grad():
-        for x, y in test_loader:
+        for x, y in tqdm(test_loader, desc="Evaluating"):
             x = x.to(device)
             
             # Measure inference time
@@ -255,11 +256,14 @@ def print_evaluation_results(results):
 
 def main():
     """Main evaluation function."""
-    # Configuration
-    feature_base_dir = "../../dataset/processed/feature_extraction/cleaned"
-    model_path = "../saved_models/cryingsense_cnn_best.pth"
-    results_dir = "../../experiments/performance_reports"
-    cm_dir = "../../experiments/confusion_matrices"
+    # Configuration - use absolute paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '../..'))
+    
+    feature_base_dir = os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned')
+    model_path = os.path.join(project_root, 'model', 'saved_models', 'cryingsense_cnn_best.pth')
+    results_dir = os.path.join(project_root, 'experiments', 'performance_reports')
+    cm_dir = os.path.join(project_root, 'experiments', 'confusion_matrices')
     
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(cm_dir, exist_ok=True)
@@ -272,7 +276,7 @@ def main():
     if not os.path.exists(model_path):
         print(f"Error: Model not found at {model_path}")
         print("Please train the model first using train.py")
-        return
+        sys.exit(1)
     
     # Load data
     print("\nLoading dataset...")
@@ -281,7 +285,9 @@ def main():
     if not file_list:
         print("Error: No feature files found!")
         print(f"Looking in: {os.path.abspath(feature_base_dir)}")
-        return
+        print("\nPlease run feature extraction first:")
+        print("  python scripts/feature_extraction.py")
+        sys.exit(1)
     
     label_names = [name for name, _ in sorted(label_map.items(), key=lambda x: x[1])]
     
@@ -307,17 +313,26 @@ def main():
     
     checkpoint = torch.load(model_path, map_location=device)
     if 'model_state_dict' in checkpoint:
+        # Initialize the model with a dummy forward pass to create _fc1 layer
+        dummy_input = torch.randn(1, 4, 128, 216).to(device)
+        _ = model(dummy_input)
+        
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Model trained for {checkpoint.get('epoch', 'unknown')} epochs")
         print(f"Training accuracy: {checkpoint.get('train_acc', 'unknown'):.4f}")
         print(f"Validation accuracy: {checkpoint.get('val_acc', 'unknown'):.4f}")
     else:
+        # Initialize the model with a dummy forward pass to create _fc1 layer
+        dummy_input = torch.randn(1, 4, 128, 216).to(device)
+        _ = model(dummy_input)
+        
         model.load_state_dict(checkpoint)
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
     print(f"Estimated size: ~{total_params * 4 / 1024 / 1024:.2f} MB")
+    print(f"Device: {device}")
     
     # Evaluate model
     results, all_labels, all_preds, label_names = evaluate_model(
