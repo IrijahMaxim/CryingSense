@@ -3,6 +3,7 @@ Live Audio Testing Module for CryingSense
 
 Tests the trained CNN model on live audio recordings from the microphone.
 Performs feature extraction and inference in real-time.
+Includes sound level visualization for input audio.
 """
 
 import os
@@ -18,6 +19,9 @@ import json
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from model.models.cnn_model import CryingSenseCNN
 
+# Import sound level utilities
+from sound_level_meter import calculate_db, create_level_bar, get_level_status
+
 
 class CryingSensePredictor:
     """Handles inference on audio files using trained CNN model."""
@@ -28,7 +32,7 @@ class CryingSensePredictor:
         
         Args:
             model_path: Path to trained model checkpoint
-            num_classes: Number of classes in the model
+            num_classes: Number of classes in the model (default: 5)
             confidence_threshold: Minimum confidence for predictions
         """
         self.model_path = model_path
@@ -39,10 +43,10 @@ class CryingSensePredictor:
         # Load model
         self.model = self._load_model()
         
-        # Class names (should match training order)
-        self.class_names = [
-            'belly_pain', 'burp', 'discomfort', 'hunger', 'noise', 'tired'
-        ][:num_classes]
+        # Class names (should match training order - sorted alphabetically)
+        # Always use 6 classes - noise is trained but treated as "invisible" during inference
+        self.class_names = ['belly_pain', 'burp', 'discomfort', 'hunger', 'noise', 'tired']
+        self.invisible_classes = ['noise']  # Classes that don't trigger alerts
     
     def _load_model(self):
         """Load trained model from checkpoint."""
@@ -51,7 +55,12 @@ class CryingSensePredictor:
         
         model = CryingSenseCNN(num_classes=self.num_classes).to(self.device)
         
-        checkpoint = torch.load(self.model_path, map_location=self.device)
+        # Initialize _fc1 layer by running a dummy forward pass
+        dummy_input = torch.randn(1, 4, 128, 216).to(self.device)
+        with torch.no_grad():
+            _ = model(dummy_input)
+        
+        checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
         if 'model_state_dict' in checkpoint:
             model.load_state_dict(checkpoint['model_state_dict'])
             print(f"Model from epoch {checkpoint.get('epoch', 'unknown')}")
@@ -70,7 +79,7 @@ class CryingSensePredictor:
     
     def extract_features(self, audio_path, sample_rate=16000, duration=5.0):
         """
-        Extract features from audio file.
+        Extract features from audio file with level analysis.
         
         Args:
             audio_path: Path to audio file
@@ -78,10 +87,24 @@ class CryingSensePredictor:
             duration: Duration to process
         
         Returns:
-            torch.Tensor: Combined features (MFCC, Mel, Chroma)
+            tuple: (torch.Tensor features, dict audio_stats)
         """
         # Load audio
         y, sr = librosa.load(audio_path, sr=sample_rate, duration=duration)
+        
+        # Calculate audio statistics
+        audio_int16 = (y * 32767).astype(np.int16)
+        db_level = calculate_db(audio_int16)
+        peak_amplitude = np.max(np.abs(y))
+        rms = np.sqrt(np.mean(y ** 2))
+        
+        audio_stats = {
+            'db_level': db_level,
+            'peak_amplitude': peak_amplitude,
+            'rms': rms,
+            'duration': len(y) / sr,
+            'sample_rate': sr
+        }
         
         # Feature extraction parameters
         n_fft = 1024
@@ -137,7 +160,7 @@ class CryingSensePredictor:
         features = torch.from_numpy(combined).float()
         features = features.unsqueeze(0)  # Add batch dimension
         
-        return features
+        return features, audio_stats
     
     def _pad_or_crop(self, feature, target_shape):
         """Pad or crop feature to target shape."""
@@ -149,21 +172,27 @@ class CryingSensePredictor:
     
     def predict(self, audio_path):
         """
-        Run inference on audio file.
+        Run inference on audio file with audio level analysis.
         
         Args:
             audio_path: Path to audio file
         
         Returns:
-            dict: Prediction results
+            dict: Prediction results including audio levels
         """
         import time
         
-        # Extract features
+        # Extract features and audio stats
         print(f"Processing: {os.path.basename(audio_path)}")
         start_time = time.time()
-        features = self.extract_features(audio_path)
+        features, audio_stats = self.extract_features(audio_path)
         feature_time = (time.time() - start_time) * 1000
+        
+        # Display audio level
+        db_level = audio_stats['db_level']
+        bar = create_level_bar(db_level)
+        status, _ = get_level_status(db_level)
+        print(f"  Audio Level: [{bar}] {db_level:.1f} dB ({status})")
         
         # Run inference
         features = features.to(self.device)
@@ -180,19 +209,31 @@ class CryingSensePredictor:
         confidence_value = confidence.item()
         predicted_class = self.class_names[prediction.item()]
         
-        # Check confidence threshold
-        is_confident = confidence_value >= self.confidence_threshold
+        # Check if prediction is an invisible class (noise)
+        is_cry = predicted_class not in self.invisible_classes
+        display_prediction = predicted_class if is_cry else 'no_cry_detected'
+        
+        # Check confidence threshold - only for actual cry predictions
+        is_confident = is_cry and confidence_value >= self.confidence_threshold
         
         # Create results dictionary
         results = {
             'audio_file': os.path.basename(audio_path),
-            'prediction': predicted_class if is_confident else 'UNCERTAIN',
+            'prediction': display_prediction if is_confident else ('no_cry_detected' if not is_cry else 'UNCERTAIN'),
+            'raw_prediction': predicted_class,
+            'is_cry': is_cry,
             'confidence': confidence_value,
             'is_confident': is_confident,
             'threshold': self.confidence_threshold,
             'probabilities': {
                 self.class_names[i]: probs[0][i].item()
                 for i in range(len(self.class_names))
+            },
+            'audio_stats': {
+                'db_level': audio_stats['db_level'],
+                'peak_amplitude': float(audio_stats['peak_amplitude']),
+                'rms': float(audio_stats['rms']),
+                'duration': audio_stats['duration']
             },
             'timing': {
                 'feature_extraction_ms': feature_time,
@@ -222,12 +263,28 @@ class CryingSensePredictor:
 
 
 def print_results(results):
-    """Print prediction results in a formatted way."""
+    """Print prediction results in a formatted way with audio levels."""
     print("\n" + "="*70)
     print("PREDICTION RESULTS")
     print("="*70)
     print(f"Audio File: {results['audio_file']}")
     print(f"Timestamp: {results['timestamp']}")
+    print("-"*70)
+    
+    # Audio level section
+    if 'audio_stats' in results:
+        stats = results['audio_stats']
+        db_level = stats['db_level']
+        bar = create_level_bar(db_level)
+        status, symbol = get_level_status(db_level)
+        
+        print(f"\nAudio Input Level:")
+        print(f"  [{bar}] {db_level:.1f} dB")
+        print(f"  Status: [{symbol}] {status}")
+        print(f"  Peak Amplitude: {stats['peak_amplitude']:.4f}")
+        print(f"  RMS: {stats['rms']:.4f}")
+        print(f"  Duration: {stats['duration']:.2f}s")
+    
     print("-"*70)
     
     if results['is_confident']:

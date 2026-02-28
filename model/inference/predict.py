@@ -30,14 +30,18 @@ from model.inference.feature_extractor import FeatureExtractor
 class CryingSensePredictor:
     """Main predictor class for CryingSense inference."""
     
-    def __init__(self, model_path, num_classes=5, device=None, 
+    # Classes that are trained but not returned as cry predictions
+    # Noise is an "invisible" class - model learns it but doesn't predict it as a cry type
+    INVISIBLE_CLASSES = ['noise']
+    
+    def __init__(self, model_path, num_classes=6, device=None, 
                  confidence_threshold=0.70):
         """
         Initialize predictor.
         
         Args:
             model_path: Path to trained model
-            num_classes: Number of classes (default: 5)
+            num_classes: Number of classes (default: 6)
             device: Device to run inference on
             confidence_threshold: Minimum confidence for alerts (default: 0.70)
         """
@@ -57,11 +61,16 @@ class CryingSensePredictor:
         self.preprocessor = AudioPreprocessor()
         self.feature_extractor = FeatureExtractor()
         
-        # Class names (excluding 'noise' which is filtered out)
-        self.class_names = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired']
+        # Class names - must match the sorted order from training (alphabetical)
+        # Includes noise as trained class, but it's "invisible" for predictions
+        self.class_names = ['belly_pain', 'burp', 'discomfort', 'hunger', 'noise', 'tired']
+        
+        # Cry-only class names (excludes invisible classes)
+        self.cry_class_names = [c for c in self.class_names if c not in self.INVISIBLE_CLASSES]
         
         print(f"Predictor initialized on device: {self.device}")
         print(f"Confidence threshold: {self.confidence_threshold}")
+        print(f"Cry classes: {self.cry_class_names}")
     
     def predict_single(self, audio_path, return_all_probs=True):
         """
@@ -97,9 +106,13 @@ class CryingSensePredictor:
         predicted_class = self.class_names[predicted_idx]
         confidence = float(probabilities[predicted_idx])
         
+        # Check if prediction is an invisible class (e.g., noise)
+        is_cry = predicted_class not in self.INVISIBLE_CLASSES
+        
         # Build result
         result = {
-            'prediction': predicted_class,
+            'is_cry': is_cry,
+            'prediction': predicted_class if is_cry else 'no_cry_detected',
             'confidence': round(confidence, 4),
             'inference_time_ms': round(inference_time, 2),
             'total_time_ms': round((time.time() - start_time) * 1000, 2),
@@ -112,9 +125,15 @@ class CryingSensePredictor:
                 name: round(float(prob), 4) 
                 for name, prob in zip(self.class_names, probabilities)
             }
+            # Also include cry-only probabilities (excluding noise)
+            result['cry_probabilities'] = {
+                name: round(float(prob), 4)
+                for name, prob in zip(self.class_names, probabilities)
+                if name not in self.INVISIBLE_CLASSES
+            }
         
-        # Add alert flag if confidence exceeds threshold
-        result['alert'] = confidence >= self.confidence_threshold
+        # Add alert flag - only alert for actual cry predictions above threshold
+        result['alert'] = is_cry and confidence >= self.confidence_threshold
         
         return result
     
@@ -238,10 +257,10 @@ Examples:
     
     # Model arguments
     parser.add_argument('--model', type=str, 
-                       default='../saved_models/cryingsense_cnn.pth',
-                       help='Path to trained model (default: ../saved_models/cryingsense_cnn.pth)')
-    parser.add_argument('--num-classes', type=int, default=5,
-                       help='Number of classes (default: 5)')
+                       default='../saved_models/cryingsense_cnn_best.pth',
+                       help='Path to trained model (default: ../saved_models/cryingsense_cnn_best.pth)')
+    parser.add_argument('--num-classes', type=int, default=6,
+                       help='Number of classes (default: 6)')
     parser.add_argument('--device', type=str, default=None,
                        help='Device to use (cpu/cuda, default: auto-detect)')
     

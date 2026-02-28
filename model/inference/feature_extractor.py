@@ -166,8 +166,10 @@ class FeatureExtractor:
         mel_padded = self.pad_or_crop(mel, (self.target_height, self.target_time_steps))
         chroma_padded = self.pad_or_crop(chroma, (self.target_height, self.target_time_steps))
         
-        # Calculate delta MFCC
-        delta_mfcc = librosa.feature.delta(mfcc)
+        # Calculate delta MFCC using same method as training code
+        # (simple difference between adjacent frames, not librosa.feature.delta)
+        delta_mfcc = np.zeros_like(mfcc)
+        delta_mfcc[:, 1:] = mfcc[:, 1:] - mfcc[:, :-1]
         delta_mfcc_padded = self.pad_or_crop(delta_mfcc, (self.target_height, self.target_time_steps))
         
         # Stack into 4-channel array

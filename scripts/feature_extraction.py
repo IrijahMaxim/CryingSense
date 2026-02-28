@@ -1,14 +1,23 @@
 """
 Feature Extraction Module for CryingSense
 
-This module extracts acoustic features from preprocessed audio:
+This module extracts acoustic features from audio files:
 - MFCC (Mel-Frequency Cepstral Coefficients) - 40 coefficients
 - Mel Spectrograms - 128 Mel bands, converted to dB scale
 - Chroma features - 12 chroma bins for pitch/harmonic content
 
-Features are extracted from both cleaned and raw audio, stored separately
-in dataset/processed/feature_extraction/ with subdirectories for each feature type.
+Supports both cleaned (preprocessed) and raw audio datasets.
+Features are stored in:
+- dataset/processed/feature_extraction/cleaned/ (for cleaned audio)
+- dataset/processed/feature_extraction/raw/ (for raw audio)
+
+Each feature type is saved in subdirectories (mfcc/, mel_spectrogram/, chroma/).
 Each feature is saved as a .npy file with 1:1 mapping to source audio.
+
+Usage:
+  python feature_extraction.py              # Extract from cleaned data (default)
+  python feature_extraction.py --raw-only   # Extract from raw data only
+  python feature_extraction.py --include-raw # Extract from both datasets
 """
 
 import os
@@ -136,47 +145,118 @@ def extract_features(input_dir, output_base_dir, sample_rate=16000,
 def main():
     """Main function to run feature extraction pipeline."""
     import sys
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Extract audio features for CryingSense',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Extract features from cleaned data only (default)
+  python feature_extraction.py
+  
+  # Extract features from raw data only
+  python feature_extraction.py --raw-only
+  
+  # Extract features from both cleaned and raw data
+  python feature_extraction.py --include-raw
+        """
+    )
+    
+    parser.add_argument('--include-raw', action='store_true',
+                       help='Also extract features from raw dataset')
+    parser.add_argument('--raw-only', action='store_true',
+                       help='Only extract features from raw dataset')
+    
+    args = parser.parse_args()
     
     # Get paths relative to script location
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     
-    input_dir = os.path.join(project_root, "dataset", "processed", "cleaned")
-    output_dir = os.path.join(project_root, "dataset", "processed", 
-                             "feature_extraction", "cleaned")
+    # Define directories
+    cleaned_input = os.path.join(project_root, "dataset", "processed", "cleaned")
+    cleaned_output = os.path.join(project_root, "dataset", "processed", 
+                                  "feature_extraction", "cleaned")
     
-    print("="*60)
-    print("CryingSense Feature Extraction")
-    print("="*60)
-    print(f"Input directory: {input_dir}")
-    print(f"Output directory: {output_dir}")
-    print(f"Sample rate: 16000 Hz")
-    print(f"MFCC coefficients: 40")
-    print(f"Mel bands: 128")
-    print(f"Chroma bins: 12")
-    print(f"FFT size: 1024")
-    print(f"Hop length: 512")
-    print("="*60)
-    print()
+    raw_input = os.path.join(project_root, "dataset", "raw")
+    raw_output = os.path.join(project_root, "dataset", "processed", 
+                              "feature_extraction", "raw")
     
-    # Extract features
-    stats = extract_features(input_dir, output_dir)
+    # Determine which datasets to process
+    datasets_to_process = []
+    if args.raw_only:
+        datasets_to_process = [('raw', raw_input, raw_output)]
+    elif args.include_raw:
+        datasets_to_process = [
+            ('cleaned', cleaned_input, cleaned_output),
+            ('raw', raw_input, raw_output)
+        ]
+    else:
+        datasets_to_process = [('cleaned', cleaned_input, cleaned_output)]
     
-    print()
-    print("="*60)
-    print("Feature Extraction Complete")
-    print("="*60)
-    print(f"Total files found: {stats['total_files']}")
-    print(f"Successfully processed: {stats['processed_files']}")
-    print(f"Errors: {len(stats['errors'])}")
+    all_stats = []
     
-    if stats['errors']:
-        print("\nErrors encountered:")
-        for error in stats['errors']:
-            print(f"  - {error}")
+    for dataset_name, input_dir, output_dir in datasets_to_process:
+        print("="*60)
+        print(f"CryingSense Feature Extraction - {dataset_name.upper()}")
+        print("="*60)
+        print(f"Input directory: {input_dir}")
+        print(f"Output directory: {output_dir}")
+        print(f"Sample rate: 16000 Hz")
+        print(f"MFCC coefficients: 40")
+        print(f"Mel bands: 128")
+        print(f"Chroma bins: 12")
+        print(f"FFT size: 1024")
+        print(f"Hop length: 512")
+        print("="*60)
+        print()
+        
+        # Check if input exists
+        if not os.path.exists(input_dir):
+            print(f"Warning: Input directory not found: {input_dir}")
+            print(f"Skipping {dataset_name} dataset.")
+            print()
+            continue
+        
+        # Extract features
+        stats = extract_features(input_dir, output_dir)
+        stats['dataset'] = dataset_name
+        all_stats.append(stats)
+        
+        print()
+        print("="*60)
+        print(f"Feature Extraction Complete - {dataset_name.upper()}")
+        print("="*60)
+        print(f"Total files found: {stats['total_files']}")
+        print(f"Successfully processed: {stats['processed_files']}")
+        print(f"Errors: {len(stats['errors'])}")
+        
+        if stats['errors']:
+            print("\nErrors encountered:")
+            for error in stats['errors'][:10]:  # Limit error output
+                print(f"  - {error}")
+            if len(stats['errors']) > 10:
+                print(f"  ... and {len(stats['errors']) - 10} more errors")
+        
+        print("="*60)
+        print()
+    
+    # Summary
+    if len(all_stats) > 1:
+        print("\n" + "="*60)
+        print("OVERALL SUMMARY")
+        print("="*60)
+        total_files = sum(s['total_files'] for s in all_stats)
+        total_processed = sum(s['processed_files'] for s in all_stats)
+        total_errors = sum(len(s['errors']) for s in all_stats)
+        print(f"Total files processed: {total_processed}/{total_files}")
+        print(f"Total errors: {total_errors}")
+        print("="*60)
+    
+    # Exit with error if any failures
+    if any(s['errors'] for s in all_stats):
         sys.exit(1)
-    
-    print("="*60)
 
 
 if __name__ == "__main__":

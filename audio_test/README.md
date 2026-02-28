@@ -1,206 +1,369 @@
-# Audio Test Module
+# CryingSense Audio Test Tools
 
-This module provides tools for testing the CryingSense CNN model with live audio recordings from your system microphone.
+This folder contains tools for testing audio input, recording samples, and running live inference.
 
-## Features
-
-- **Audio Recording**: Record audio from system default microphone
-- **Live Testing**: Test trained CNN model on recorded audio
-- **Real-time Inference**: Get instant predictions with confidence scores
-- **Continuous Recording**: Record multiple audio segments automatically
-
-## Files
-
-- `record_audio.py` - Audio recording utility
-- `test_live.py` - Live testing and inference script
-- `README.md` - This file
+---
 
 ## Quick Start
 
-### 1. List Available Microphones
+```bash
+# Activate virtual environment first
+cd "P:\VScode Lobby\CryingSense"
+.\venv\Scripts\Activate.ps1
+
+# Navigate to audio_test folder
+cd audio_test
+```
+
+---
+
+## Tools Overview
+
+| Tool | Purpose | Requires Model |
+|------|---------|----------------|
+| `tester.py` | Test microphone & visualize audio | No |
+| `record_audio.py` | Record audio clips | No |
+| `test_live.py` | Run inference on audio file | Yes |
+| `live.py` | Continuous live monitoring | Yes |
+| `sound_level_meter.py` | Real-time level meter | No |
+
+---
+
+## tester.py - Audio Input Tester
+
+Test your microphone and audio quality without needing a trained model.
+
+### Features
+- Real-time dB level monitoring
+- 6-band frequency spectrum analyzer
+- Clipping and silence detection
+- Audio quality assessment
+
+### Usage
 
 ```bash
-python record_audio.py --list-devices
+# Live audio testing (continuous)
+python tester.py
+
+# Record a test clip (5 seconds default)
+python tester.py --record
+
+# Record for 10 seconds
+python tester.py --record --duration 10
+
+# Use specific audio device
+python tester.py --device 1
+
+# List available audio devices
+python tester.py --list-devices
 ```
 
-### 2. Record Audio
+### Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--sample-rate` | Audio sample rate (Hz) | 16000 |
+| `--device` | Audio device index | System default |
+| `--record` | Record a test clip | False |
+| `--duration` | Recording duration (seconds) | 5.0 |
+| `--output` | Output directory for recordings | `recordings` |
+| `--list-devices` | List audio devices and exit | - |
 
-Record a 5-second audio clip:
-```bash
-python record_audio.py --duration 5 --output recordings
-```
+---
 
-Record continuously (press Ctrl+C to stop):
-```bash
-python record_audio.py --continuous --duration 5 --output recordings
-```
+## record_audio.py - Audio Recorder
 
-### 3. Test with CNN Model
+Record audio clips for dataset collection or testing.
 
-Test a single audio file:
-```bash
-python test_live.py --model ../model/saved_models/cryingsense_cnn_best.pth --audio recordings/recording_20240101_120000.wav
-```
+### Features
+- Real-time sound level display during recording
+- Countdown timer
+- Saves as WAV format (16kHz, 16-bit mono)
 
-Test all recordings in a directory:
-```bash
-python test_live.py --model ../model/saved_models/cryingsense_cnn_best.pth --audio recordings/
-```
-
-## Usage Examples
-
-### Record and Test Workflow
-
-```bash
-# Step 1: Record audio
-python record_audio.py --duration 5 --output recordings
-
-# Step 2: Test with model
-python test_live.py --model ../model/saved_models/cryingsense_cnn_best.pth --audio recordings/ --threshold 0.7
-```
-
-### Continuous Testing Loop
+### Usage
 
 ```bash
-# Terminal 1: Continuous recording
-python record_audio.py --continuous --duration 5 --output recordings
+# Record 5 seconds (default)
+python record_audio.py
 
-# Terminal 2: Watch and test new recordings
-# (manually run test_live.py on new files)
+# Record for 10 seconds
+python record_audio.py --duration 10
+
+# Specify output filename
+python record_audio.py --output my_recording.wav
+
+# Disable real-time level display
+python record_audio.py --no-levels
+
+# Use specific audio device
+python record_audio.py --device 1
 ```
 
-## Command Line Options
+### Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--duration` | Recording duration (seconds) | 5.0 |
+| `--output` | Output filename | `recording_YYYYMMDD_HHMMSS.wav` |
+| `--sample-rate` | Audio sample rate (Hz) | 16000 |
+| `--device` | Audio device index | System default |
+| `--no-levels` | Disable real-time level display | False |
 
-### record_audio.py
+---
+
+## test_live.py - Single File Inference
+
+Run cry classification on a single audio file.
+
+### Features
+- Load and analyze WAV audio files
+- Display prediction with confidence scores
+- Show audio level statistics
+- Feature extraction timing info
+
+### Usage
+
+```bash
+# Basic inference
+python test_live.py --audio recordings/my_audio.wav --model ../model/saved_models/cryingsense_cnn_best.pth
+
+# Use 6-class model
+python test_live.py --audio recordings/my_audio.wav --model ../model/saved_models/model_6class.pth --num-classes 6
+```
+
+### Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--audio` | Path to audio file (required) | - |
+| `--model` | Path to model checkpoint | `../model/saved_models/cryingsense_cnn_best.pth` |
+| `--num-classes` | Number of classes | 5 |
+
+### Output Example
+```
+Audio Level: [████████████████████···················] -28.1 dB (NORMAL)
+
+Prediction: DISCOMFORT
+Confidence: 85.3%
+Status: HIGH CONFIDENCE
+
+Class Probabilities:
+  discomfort   [██████████████████████████████] 85.3% <--
+  hunger       [████······························] 8.2%
+  tired        [██································] 3.5%
+  belly_pain   [█·································] 2.1%
+  burp         [·································· ] 0.9%
+```
+
+---
+
+## live.py - Continuous Live Monitoring
+
+Run continuous real-time inference on microphone input.
+
+### Features
+- Non-stop audio monitoring
+- Rolling 5-second buffer for inference
+- Real-time predictions every 1 second
+- Alert system for high-confidence detections
+- Optional saving of detected audio clips
+
+### Usage
+
+```bash
+# Start live monitoring
+python live.py --model ../model/saved_models/cryingsense_cnn_best.pth
+
+# Save detected cries
+python live.py --model ../model/saved_models/cryingsense_cnn_best.pth --save
+
+# Custom confidence threshold (80%)
+python live.py --model ../model/saved_models/cryingsense_cnn_best.pth --threshold 0.8
+
+# Use specific audio device
+python live.py --model ../model/saved_models/cryingsense_cnn_best.pth --device 1
+
+# List available audio devices
+python live.py --list-devices
+```
+
+### Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--model` | Path to model checkpoint | `../model/saved_models/cryingsense_cnn_best.pth` |
+| `--num-classes` | Number of classes | 5 |
+| `--threshold` | Confidence threshold for alerts | 0.6 |
+| `--duration` | Audio chunk duration (seconds) | 5.0 |
+| `--sample-rate` | Audio sample rate (Hz) | 16000 |
+| `--device` | Audio device index | System default |
+| `--save` | Save audio when cry detected | False |
+| `--output` | Output directory for detections | `detections` |
+| `--list-devices` | List audio devices and exit | - |
+
+### Display
+```
+======================================================================
+  CRYINGSENSE LIVE MONITOR
+======================================================================
+
+  AUDIO INPUT
+  ------------------------------------------------------------------
+  Level: [███████████████████████·························] -25.3 dB
+  Peak:  -18.2 dB  |  Status: [■] NORMAL
+
+  Buffer: [████████████████████] 100.0%  (80000/80000 samples)
+
+  PREDICTION
+  ------------------------------------------------------------------
+  >>> DETECTED: HUNGER (78.5%) <<<
+  ALERT STATUS: HIGH CONFIDENCE DETECTION!
+
+  Class Probabilities:
+    hunger       [████████████████████████████··] 78.5% <--
+    discomfort   [█████·························] 12.3%
+    ...
+
+  ------------------------------------------------------------------
+  Alerts: 3  |  Threshold: 60%  |  Time: 14:32:15
+
+======================================================================
+  Press Ctrl+C to stop
+======================================================================
+```
+
+---
+
+## sound_level_meter.py - Level Meter Utility
+
+Standalone sound level meter with spectrum analyzer.
+
+### Features
+- Real-time dB level with visual bar
+- 16-band frequency spectrum
+- Peak hold indicator
+- Audio status classification
+
+### Usage
+
+```bash
+# Run standalone level meter
+python sound_level_meter.py
+
+# Use specific audio device
+python sound_level_meter.py --device 1
+
+# List audio devices
+python sound_level_meter.py --list-devices
+```
+
+### Exported Functions
+Other scripts can import utilities from this module:
+
+```python
+from sound_level_meter import calculate_db, create_level_bar, get_level_status
+
+# Calculate dB from audio samples
+db = calculate_db(audio_chunk)
+
+# Create visual level bar
+bar = create_level_bar(db, width=40)
+
+# Get status text
+status, symbol = get_level_status(db)
+```
+
+---
+
+## Audio Device Selection
+
+If you have multiple microphones or audio interfaces:
+
+```bash
+# List all available input devices
+python tester.py --list-devices
+
+# Output:
+# Available Audio Input Devices
+# ==============================================================
+#   Device 0: Microphone (Realtek) [DEFAULT]
+#             Sample Rate: 44100 Hz, Channels: 2
+#   Device 1: USB Audio Device
+#             Sample Rate: 48000 Hz, Channels: 1
+#   Device 2: Webcam Microphone
+#             Sample Rate: 16000 Hz, Channels: 1
+# ==============================================================
+
+# Use device 1
+python tester.py --device 1
+python live.py --device 1 --model ../model/saved_models/cryingsense_cnn_best.pth
+```
+
+---
+
+## Troubleshooting
+
+### No audio input detected
+1. Check microphone is connected and enabled
+2. Run `python tester.py --list-devices` to see available devices
+3. Try specifying device explicitly: `--device 0`
+
+### Clipping warnings
+- Lower your microphone input gain
+- Move microphone further from sound source
+
+### Very low levels
+- Increase microphone gain
+- Check microphone isn't muted
+- Speak closer to microphone
+
+### Model loading errors
+- Ensure model file exists at specified path
+- Check `--num-classes` matches model architecture (5 or 6)
+
+### PyAudio errors on Windows
+```bash
+pip install pyaudio
+# If that fails:
+pip install pipwin
+pipwin install pyaudio
+```
+
+---
+
+## Class Labels
+
+The model classifies cries into these categories:
+
+| Class | Description |
+|-------|-------------|
+| `belly_pain` | Cry indicating stomach discomfort |
+| `burp` | Burping/gas-related sounds |
+| `discomfort` | General discomfort cry |
+| `hunger` | Hungry cry pattern |
+| `tired` | Sleepy/tired cry |
+| `noise` | Non-cry sounds (6-class model only) |
+
+---
+
+## File Structure
 
 ```
---duration SECONDS    Recording duration in seconds (default: 5.0)
---output DIR          Output directory for recordings (default: recordings)
---continuous          Enable continuous recording mode
---segments N          Number of segments for continuous mode
---list-devices        List available audio devices
---device INDEX        Specific device index to use
---sample-rate HZ      Sample rate in Hz (default: 16000)
+audio_test/
+├── README.md           # This file
+├── __init__.py
+├── live.py             # Continuous live monitoring
+├── record_audio.py     # Audio recording
+├── sound_level_meter.py # Level meter utility
+├── test_live.py        # Single file inference
+├── tester.py           # Audio input testing
+├── recordings/         # Saved recordings
+└── detections/         # Saved cry detections (live.py --save)
 ```
 
-### test_live.py
-
-```
---model PATH          Path to trained model checkpoint
---audio PATH          Path to audio file or directory
---threshold FLOAT     Confidence threshold (default: 0.6)
---num-classes N       Number of classes in model (default: 5)
---output FILE         Output JSON file for results
-```
+---
 
 ## System Requirements
 
 - **Audio Input**: System microphone or audio input device
 - **Python**: 3.8+
 - **Dependencies**: PyAudio, NumPy, Librosa, PyTorch
-
-### Install PyAudio
-
-**Linux:**
-```bash
-sudo apt-get install portaudio19-dev
-pip install pyaudio
-```
-
-**macOS:**
-```bash
-brew install portaudio
-pip install pyaudio
-```
-
-**Windows:**
-```bash
-pip install pyaudio
-```
-
-## Output Format
-
-### Prediction Results
-
-```
-==============================================================================
-PREDICTION RESULTS
-==============================================================================
-Audio File: recording_20240101_120000.wav
-Timestamp: 2024-01-01T12:00:00.123456
-
-Prediction: HUNGER
-Confidence: 87.50%
-Status: ✓ CONFIDENT
-
-Class Probabilities:
-  hunger          [████████████████████████████████████░░░░] 87.50%
-  discomfort      [███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 6.30%
-  tiredness       [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 3.20%
-  belly_pain      [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 2.00%
-  burp            [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 1.00%
-
-Timing:
-  Feature Extraction: 145.23 ms
-  Model Inference:    23.45 ms
-  Total Time:         168.68 ms
-==============================================================================
-```
-
-## Confidence Threshold
-
-The confidence threshold determines when predictions are considered reliable:
-
-- **≥ threshold**: Prediction is CONFIDENT and can be used
-- **< threshold**: Prediction is UNCERTAIN (may be noise or unclear audio)
-
-Default threshold: 0.6 (60%)
-
-Adjust based on your use case:
-- **Higher threshold (0.7-0.8)**: Fewer false positives, more rejections
-- **Lower threshold (0.5-0.6)**: More predictions, may include false positives
-
-## Troubleshooting
-
-### No Audio Devices Found
-
-- Check that your microphone is connected and enabled
-- Run `python record_audio.py --list-devices` to see available devices
-- On Linux, ensure your user has audio permissions
-
-### PyAudio Installation Issues
-
-- Install system audio libraries first (see System Requirements)
-- Try: `pip install --upgrade pyaudio`
-- Alternative: Use `sounddevice` library instead
-
-### Model Not Found
-
-- Train the model first: `cd ../model/training && python train.py`
-- Or provide correct model path: `--model path/to/your/model.pth`
-
-### Low Prediction Confidence
-
-- Ensure audio is clear and loud enough
-- Check that audio matches training data characteristics
-- Try recording closer to the sound source
-- Verify sample rate matches training (16kHz)
-
-## Notes
-
-- Audio is recorded in **mono** at **16kHz** sample rate to match model training
-- Each recording is **5 seconds** by default (configurable)
-- Features extracted: **MFCC**, **Mel Spectrogram**, **Chroma**
-- Model input shape: **(batch, 4, 128, time_steps)**
-- Inference time: **~20-50ms** on CPU, **~5-10ms** on GPU
-
-## Future Enhancements
-
-- [ ] Real-time streaming inference (no file I/O)
-- [ ] Audio visualization during recording
-- [ ] Automatic cry detection (start recording on sound)
-- [ ] Web interface for testing
-- [ ] Mobile app integration
 
 ## License
 

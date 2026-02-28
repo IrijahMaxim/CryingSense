@@ -3,6 +3,7 @@ Audio Recording Module for CryingSense Testing
 
 Records audio from the system default microphone for testing the CNN model.
 Supports both real-time streaming and file-based recording.
+Includes real-time sound level visualization.
 """
 
 import os
@@ -12,12 +13,15 @@ import numpy as np
 import pyaudio
 from datetime import datetime
 
+# Import sound level utilities
+from sound_level_meter import calculate_db, create_level_bar, get_level_status
+
 
 class AudioRecorder:
-    """Handles audio recording from system microphone."""
+    """Handles audio recording from system microphone with real-time level display."""
     
     def __init__(self, sample_rate=16000, chunk_size=1024, channels=1, 
-                 audio_format=pyaudio.paInt16):
+                 audio_format=pyaudio.paInt16, show_levels=True):
         """
         Initialize audio recorder.
         
@@ -26,12 +30,15 @@ class AudioRecorder:
             chunk_size: Number of samples per buffer (default: 1024)
             channels: Number of audio channels (default: 1 for mono)
             audio_format: PyAudio format (default: paInt16)
+            show_levels: Whether to show real-time sound levels (default: True)
         """
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
         self.channels = channels
         self.audio_format = audio_format
         self.audio = pyaudio.PyAudio()
+        self.show_levels = show_levels
+        self.peak_db = -100
         
     def list_devices(self):
         """List all available audio input devices."""
@@ -50,7 +57,7 @@ class AudioRecorder:
     
     def record_audio(self, duration=5.0, device_index=None, save_path=None):
         """
-        Record audio from microphone.
+        Record audio from microphone with real-time level display.
         
         Args:
             duration: Recording duration in seconds (default: 5.0)
@@ -61,7 +68,11 @@ class AudioRecorder:
             numpy array: Audio data
         """
         print(f"\nRecording for {duration} seconds...")
-        print("Speak or make sounds into the microphone...")
+        if self.show_levels:
+            print("Level meter active - watch the levels below:")
+            print("-" * 60)
+        else:
+            print("Speak or make sounds into the microphone...")
         
         # Open stream
         stream = self.audio.open(
@@ -75,18 +86,41 @@ class AudioRecorder:
         
         frames = []
         num_chunks = int(self.sample_rate / self.chunk_size * duration)
+        self.peak_db = -100
         
-        # Record audio
+        # Record audio with level display
         for i in range(num_chunks):
             data = stream.read(self.chunk_size, exception_on_overflow=False)
             frames.append(data)
             
-            # Progress indicator
-            if i % 10 == 0:
+            # Calculate and display level
+            audio_chunk = np.frombuffer(data, dtype=np.int16)
+            current_db = calculate_db(audio_chunk)
+            
+            # Update peak
+            if current_db > self.peak_db:
+                self.peak_db = current_db
+            
+            if self.show_levels:
+                # Create level bar
+                bar = create_level_bar(current_db)
                 progress = (i + 1) / num_chunks * 100
-                print(f"\rRecording progress: {progress:.1f}%", end='', flush=True)
+                time_left = duration - (i + 1) * self.chunk_size / self.sample_rate
+                status, _ = get_level_status(current_db)
+                
+                print(f"\r[{bar}] {current_db:5.1f}dB | Peak:{self.peak_db:5.1f}dB | {time_left:4.1f}s | {status:6s}", 
+                      end='', flush=True)
+            else:
+                # Simple progress indicator
+                if i % 10 == 0:
+                    progress = (i + 1) / num_chunks * 100
+                    print(f"\rRecording progress: {progress:.1f}%", end='', flush=True)
         
-        print("\rRecording complete!         ")
+        if self.show_levels:
+            print(f"\n{'-' * 60}")
+            print(f"Recording complete! Peak level: {self.peak_db:.1f} dB")
+        else:
+            print("\rRecording complete!         ")
         
         # Stop and close stream
         stream.stop_stream()
@@ -174,11 +208,13 @@ def main():
                        help='Specific device index to use')
     parser.add_argument('--sample-rate', type=int, default=16000,
                        help='Sample rate in Hz (default: 16000)')
+    parser.add_argument('--no-levels', action='store_true',
+                       help='Disable real-time sound level display')
     
     args = parser.parse_args()
     
     # Initialize recorder
-    recorder = AudioRecorder(sample_rate=args.sample_rate)
+    recorder = AudioRecorder(sample_rate=args.sample_rate, show_levels=not args.no_levels)
     
     try:
         # List devices if requested

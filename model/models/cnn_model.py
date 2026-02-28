@@ -30,21 +30,6 @@ class CryingSenseCNN(nn.Module):
         self._fc1 = None
         self.fc2 = nn.Linear(128, num_classes)
 
-    def _get_flattened_size(self, x):
-        # Pass a dummy tensor through conv/pool to get flattened size
-        with torch.no_grad():
-            x = self.conv1(x)
-            x = self.pool(x)
-            x = self.conv2(x)
-            x = self.pool(x)
-            x = self.conv3(x)
-            x = self.pool(x)
-            if self.use_gap:
-                x = F.adaptive_avg_pool2d(x, (1, 1))
-                return x.shape[1]
-            else:
-                return x.view(x.size(0), -1).shape[1]
-
     def forward(self, x):
         x = self.conv1(x)
         x = self.pool(x)

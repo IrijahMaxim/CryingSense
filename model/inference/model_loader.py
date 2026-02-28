@@ -20,13 +20,13 @@ from model.models.cnn_model import CryingSenseCNN
 class ModelLoader:
     """Utility class for loading CryingSense models."""
     
-    def __init__(self, model_path, num_classes=5, device=None):
+    def __init__(self, model_path, num_classes=6, device=None):
         """
         Initialize model loader.
         
         Args:
             model_path: Path to model file
-            num_classes: Number of output classes (default: 5)
+            num_classes: Number of output classes (default: 6)
             device: Device to load model on (cpu/cuda)
         """
         self.model_path = model_path
@@ -72,7 +72,13 @@ class ModelLoader:
         
         model = CryingSenseCNN(num_classes=self.num_classes).to(self.device)
         
-        checkpoint = torch.load(self.model_path, map_location=self.device)
+        # Initialize _fc1 layer by running a dummy forward pass
+        # This is required because _fc1 is lazily initialized in the model
+        dummy_input = torch.randn(1, 4, 128, 216).to(self.device)
+        with torch.no_grad():
+            _ = model(dummy_input)
+        
+        checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
         
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
             model.load_state_dict(checkpoint['model_state_dict'])
@@ -93,6 +99,12 @@ class ModelLoader:
         
         model = CryingSenseCNN(num_classes=self.num_classes)
         
+        # Initialize _fc1 layer by running a dummy forward pass
+        # This is required because _fc1 is lazily initialized in the model
+        dummy_input = torch.randn(1, 4, 128, 216)
+        with torch.no_grad():
+            _ = model(dummy_input)
+        
         # Apply dynamic quantization
         model = torch.quantization.quantize_dynamic(
             model,
@@ -100,7 +112,7 @@ class ModelLoader:
             dtype=torch.qint8
         )
         
-        checkpoint = torch.load(self.model_path, map_location='cpu')
+        checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
         
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
             model.load_state_dict(checkpoint['model_state_dict'])
@@ -161,13 +173,13 @@ class ModelLoader:
         return info
 
 
-def load_model(model_path, num_classes=5, device=None):
+def load_model(model_path, num_classes=6, device=None):
     """
     Convenience function to load a model.
     
     Args:
         model_path: Path to model file
-        num_classes: Number of output classes
+        num_classes: Number of output classes (default: 6)
         device: Device to load model on
     
     Returns:

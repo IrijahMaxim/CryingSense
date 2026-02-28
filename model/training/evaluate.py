@@ -35,27 +35,55 @@ def get_label_from_path(path):
 
 class CryingSenseDataset(Dataset):
     """Dataset for loading feature files."""
-    def __init__(self, file_list, label_map, feature_base_dir):
+    def __init__(self, file_list, label_map, feature_base_dirs=None):
+        """
+        Args:
+            file_list: List of (mfcc_path, base_dir) tuples or just mfcc paths
+            label_map: Dict mapping class names to indices
+            feature_base_dirs: Dict mapping source names to base directories
+        """
         self.file_list = file_list
         self.label_map = label_map
-        self.feature_base_dir = feature_base_dir
+        self.feature_base_dirs = feature_base_dirs or {}
     
     def __len__(self):
         return len(self.file_list)
     
     def __getitem__(self, idx):
-        # Load all feature types and combine them
-        mfcc_path = self.file_list[idx]
+        # Get file info - can be (path, base_dir) tuple or just path
+        item = self.file_list[idx]
+        if isinstance(item, tuple):
+            mfcc_path, base_dir = item
+        else:
+            mfcc_path = item
+            base_dir = self._infer_base_dir(mfcc_path)
         
         # Construct paths for other features
-        rel_path = os.path.relpath(mfcc_path, os.path.join(self.feature_base_dir, 'mfcc'))
-        mel_path = os.path.join(self.feature_base_dir, 'mel_spectrogram', rel_path)
-        chroma_path = os.path.join(self.feature_base_dir, 'chroma', rel_path)
+        rel_path = os.path.relpath(mfcc_path, os.path.join(base_dir, 'mfcc'))
+        mel_path = os.path.join(base_dir, 'mel_spectrogram', rel_path)
+        chroma_path = os.path.join(base_dir, 'chroma', rel_path)
         
         # Load and combine features
         mfcc = np.load(mfcc_path)
         mel = np.load(mel_path)
         chroma = np.load(chroma_path)
+        
+        x = self._combine_features(mfcc, mel, chroma)
+        x = torch.tensor(x, dtype=torch.float32)
+        
+        label_name = get_label_from_path(mfcc_path)
+        y = self.label_map[label_name]
+        return x, y
+    
+    def _infer_base_dir(self, mfcc_path):
+        """Infer base directory from MFCC path (legacy support)."""
+        path_parts = mfcc_path.replace('\\', '/').split('/')
+        for i, part in enumerate(path_parts):
+            if part == 'mfcc':
+                return '/'.join(path_parts[:i])
+        if self.feature_base_dirs:
+            return list(self.feature_base_dirs.values())[0]
+        return os.path.dirname(os.path.dirname(mfcc_path))
         
         x = self._combine_features(mfcc, mel, chroma)
         x = torch.tensor(x, dtype=torch.float32)
@@ -107,6 +135,72 @@ def get_file_list_and_labels(feature_base_dir):
     labels = sorted(list(set(get_label_from_path(f) for f in file_list)))
     label_map = {label: i for i, label in enumerate(labels)}
     return file_list, label_map
+
+
+def load_split_from_json(json_path, feature_base_dirs):
+    """
+    Load dataset split from JSON file.
+    
+    Args:
+        json_path: Path to dataset_split.json
+        feature_base_dirs: Dict mapping source names ('cleaned', 'raw') to base directories
+        
+    Returns:
+        Dict with 'train', 'val', 'eval' keys containing lists of (mfcc_path, base_dir) tuples
+    """
+    with open(json_path, 'r') as f:
+        split_data = json.load(f)
+    
+    result = {'train': [], 'val': [], 'eval': []}
+    
+    # Handle nested structure: {"splits": {"train": {"class_name": [files]}}}
+    splits = split_data.get('splits', split_data)  # Support both formats
+    
+    for split_name in ['train', 'val', 'eval']:
+        split_content = splits.get(split_name, {})
+        
+        # If split_content is a dict (organized by class), flatten it
+        if isinstance(split_content, dict):
+            for class_name, file_list in split_content.items():
+                for entry in file_list:
+                    # Entry format: "source:filename.npy"
+                    if ':' in entry:
+                        source, filename = entry.split(':', 1)
+                    else:
+                        source = 'cleaned'
+                        filename = entry
+                    
+                    if source not in feature_base_dirs:
+                        print(f"Warning: Unknown source '{source}' in split, skipping {entry}")
+                        continue
+                    
+                    base_dir = feature_base_dirs[source]
+                    mfcc_path = os.path.join(base_dir, 'mfcc', class_name, filename)
+                    
+                    if os.path.exists(mfcc_path):
+                        result[split_name].append((mfcc_path, base_dir))
+                    else:
+                        print(f"Warning: Feature file not found: {mfcc_path}")
+        else:
+            # Legacy flat list format
+            for entry in split_content:
+                if ':' in entry:
+                    source, filename = entry.split(':', 1)
+                else:
+                    source = 'cleaned'
+                    filename = entry
+                
+                if source not in feature_base_dirs:
+                    continue
+                
+                base_dir = feature_base_dirs[source]
+                class_name = filename.rsplit('_', 1)[0] if '_' in filename else filename.replace('.npy', '')
+                mfcc_path = os.path.join(base_dir, 'mfcc', class_name, filename)
+                
+                if os.path.exists(mfcc_path):
+                    result[split_name].append((mfcc_path, base_dir))
+    
+    return result
 
 
 def evaluate_model(model, test_loader, device, label_names, confidence_threshold=0.6):
@@ -260,10 +354,15 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, '../..'))
     
-    feature_base_dir = os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned')
+    # Feature directories for both cleaned and raw data
+    feature_base_dirs = {
+        'cleaned': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned'),
+        'raw': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'raw')
+    }
     model_path = os.path.join(project_root, 'model', 'saved_models', 'cryingsense_cnn_best.pth')
     results_dir = os.path.join(project_root, 'experiments', 'performance_reports')
     cm_dir = os.path.join(project_root, 'experiments', 'confusion_matrices')
+    split_json_path = os.path.join(project_root, 'dataset', 'dataset_split.json')
     
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(cm_dir, exist_ok=True)
@@ -278,40 +377,63 @@ def main():
         print("Please train the model first using train.py")
         sys.exit(1)
     
-    # Load data
-    print("\nLoading dataset...")
-    file_list, label_map = get_file_list_and_labels(feature_base_dir)
+    # Try to load from dataset_split.json first
+    if os.path.exists(split_json_path):
+        print(f"\nLoading eval set from: {split_json_path}")
+        splits = load_split_from_json(split_json_path, feature_base_dirs)
+        eval_files = splits['eval']
+        
+        if not eval_files:
+            print("Error: No eval files found in dataset_split.json!")
+            print("Please run: python scripts/dataset_split.py")
+            sys.exit(1)
+        
+        # Build label map from eval files
+        labels = sorted(list(set(get_label_from_path(f[0]) for f in eval_files)))
+        label_map = {label: i for i, label in enumerate(labels)}
+        label_names = labels
+        
+        print(f"Loaded from JSON - Eval samples: {len(eval_files)}")
+    else:
+        # Fallback: Load from single directory and split randomly
+        print("\nWarning: dataset_split.json not found, falling back to random split")
+        print("For reproducible splits, run: python scripts/dataset_split.py")
+        
+        feature_base_dir = feature_base_dirs['cleaned']
+        file_list, label_map = get_file_list_and_labels(feature_base_dir)
+        
+        if not file_list:
+            print("Error: No feature files found!")
+            print(f"Looking in: {os.path.abspath(feature_base_dir)}")
+            print("\nPlease run feature extraction first:")
+            print("  python scripts/feature_extraction.py")
+            sys.exit(1)
+        
+        label_names = [name for name, _ in sorted(label_map.items(), key=lambda x: x[1])]
+        
+        # Split randomly for eval set
+        _, eval_files_raw = train_test_split(
+            file_list, test_size=0.10, random_state=42,
+            stratify=[get_label_from_path(f) for f in file_list]
+        )
+        eval_files = [(f, feature_base_dir) for f in eval_files_raw]
     
-    if not file_list:
-        print("Error: No feature files found!")
-        print(f"Looking in: {os.path.abspath(feature_base_dir)}")
-        print("\nPlease run feature extraction first:")
-        print("  python scripts/feature_extraction.py")
-        sys.exit(1)
-    
-    label_names = [name for name, _ in sorted(label_map.items(), key=lambda x: x[1])]
-    
-    # For evaluation, use test split (last 10% of data)
-    # In production, this should load from dataset_split.json
-    _, test_files = train_test_split(
-        file_list, test_size=0.10, random_state=42,
-        stratify=[get_label_from_path(f) for f in file_list]
-    )
-    
-    print(f"Test samples: {len(test_files)}")
+    print(f"Eval samples: {len(eval_files)}")
     print(f"Classes: {label_names}")
     
     # Create dataset and loader
-    test_dataset = CryingSenseDataset(test_files, label_map, feature_base_dir)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, 
-                            num_workers=2, pin_memory=True)
+    # Note: num_workers=0 for Windows compatibility
+    use_pin_memory = torch.cuda.is_available()
+    eval_dataset = CryingSenseDataset(eval_files, label_map, feature_base_dirs)
+    eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=False, 
+                            num_workers=0, pin_memory=use_pin_memory)
     
     # Load model
     print(f"\nLoading model from {model_path}...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = CryingSenseCNN(num_classes=len(label_map)).to(device)
     
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     if 'model_state_dict' in checkpoint:
         # Initialize the model with a dummy forward pass to create _fc1 layer
         dummy_input = torch.randn(1, 4, 128, 216).to(device)
@@ -336,7 +458,7 @@ def main():
     
     # Evaluate model
     results, all_labels, all_preds, label_names = evaluate_model(
-        model, test_loader, device, label_names, confidence_threshold=0.6
+        model, eval_loader, device, label_names, confidence_threshold=0.6
     )
     
     # Print results
