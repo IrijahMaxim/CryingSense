@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <driver/i2s.h>
 
 // I2S Microphone Pin Configuration
