@@ -92,8 +92,8 @@ def get_file_groups(feature_base_dir, classes):
     return groups
 
 
-def split_dataset(feature_base_dir, output_dir, train_ratio=0.80, val_ratio=0.10, 
-                 eval_ratio=0.10, random_seed=42, class_filter=None):
+def split_dataset(feature_base_dir, output_dir, train_ratio=0.65, val_ratio=0.15, 
+                 eval_ratio=0.20, random_seed=42, class_filter=None):
     """
     Split feature files into train/validation/evaluate sets by session.
     
@@ -317,9 +317,9 @@ Output: dataset_split.json
     print(f"CryingSense Dataset Splitting - {mode_name}")
     print("="*60)
     print(f"Output file: {output_filename}")
-    print(f"Train ratio: 80%")
-    print(f"Validation ratio: 10%")
-    print(f"Evaluate ratio: 10%")
+    print(f"Train ratio: 65%")
+    print(f"Validation ratio: 15%")
+    print(f"Evaluate ratio: 20%")
     print("="*60)
     print()
     
@@ -374,9 +374,9 @@ Output: dataset_split.json
                 'total': dict(combined_stats['total'])
             },
             'config': {
-                'train_ratio': 0.80,
-                'val_ratio': 0.10,
-                'eval_ratio': 0.10,
+                'train_ratio': 0.65,
+                'val_ratio': 0.15,
+                'eval_ratio': 0.20,
                 'random_seed': 42,
                 'classes': ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise']
             }

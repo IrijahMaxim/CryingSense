@@ -12,6 +12,8 @@ import os
 import sys
 import json
 import time
+import logging
+from datetime import datetime
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -360,12 +362,29 @@ def main():
         'raw': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'raw')
     }
     model_path = os.path.join(project_root, 'model', 'saved_models', 'cryingsense_cnn_best.pth')
-    results_dir = os.path.join(project_root, 'experiments', 'performance_reports')
-    cm_dir = os.path.join(project_root, 'experiments', 'confusion_matrices')
+    evaluation_report_dir = os.path.join(project_root, 'performance_reports', 'evaluation_report')
+    logs_dir = os.path.join(project_root, 'performance_reports', 'logs')
     split_json_path = os.path.join(project_root, 'dataset', 'dataset_split.json')
     
-    os.makedirs(results_dir, exist_ok=True)
-    os.makedirs(cm_dir, exist_ok=True)
+    os.makedirs(evaluation_report_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    # Setup logging
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(logs_dir, f'evaluate_{timestamp}.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    
+    logger.info("="*70)
+    logger.info("CryingSense Model Evaluation")
+    logger.info("="*70)
     
     print("="*70)
     print("CryingSense Model Evaluation")
@@ -373,8 +392,10 @@ def main():
     
     # Check if model exists
     if not os.path.exists(model_path):
-        print(f"Error: Model not found at {model_path}")
+        error_msg = f"Error: Model not found at {model_path}"
+        print(error_msg)
         print("Please train the model first using train.py")
+        logger.error(error_msg)
         sys.exit(1)
     
     # Try to load from dataset_split.json first
@@ -421,6 +442,9 @@ def main():
     print(f"Eval samples: {len(eval_files)}")
     print(f"Classes: {label_names}")
     
+    logger.info(f"Eval samples: {len(eval_files)}")
+    logger.info(f"Classes: {label_names}")
+    
     # Create dataset and loader
     # Note: num_workers=0 for Windows compatibility
     use_pin_memory = torch.cuda.is_available()
@@ -464,13 +488,17 @@ def main():
     # Print results
     print_evaluation_results(results)
     
+    # Log key metrics
+    logger.info(f"Overall Accuracy: {results['accuracy']:.4f}")
+    logger.info(f"Average Inference Time: {results['inference_time_ms']['avg_per_sample']:.2f} ms")
+    
     # Generate and save confusion matrix
     cm = np.array(results['confusion_matrix'])
-    cm_path = os.path.join(cm_dir, 'confusion_matrix.png')
+    cm_path = os.path.join(evaluation_report_dir, 'confusion_matrix.png')
     plot_confusion_matrix(cm, label_names, cm_path)
     
     # Save results to JSON
-    results_path = os.path.join(results_dir, 'evaluation_results.json')
+    results_path = os.path.join(evaluation_report_dir, 'evaluation_results.json')
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     print(f"\nResults saved to: {results_path}")
@@ -478,7 +506,7 @@ def main():
     # Generate detailed classification report
     report = classification_report(all_labels, all_preds, 
                                    target_names=label_names, digits=4)
-    report_path = os.path.join(results_dir, 'classification_report.txt')
+    report_path = os.path.join(evaluation_report_dir, 'classification_report.txt')
     with open(report_path, 'w') as f:
         f.write("CryingSense Model - Classification Report\n")
         f.write("="*70 + "\n\n")
@@ -488,6 +516,9 @@ def main():
     print("\n" + "="*70)
     print("Evaluation Complete!")
     print("="*70)
+    
+    logger.info("Evaluation Complete")
+    logger.info(f"Results saved to: {evaluation_report_dir}")
 
 
 if __name__ == "__main__":

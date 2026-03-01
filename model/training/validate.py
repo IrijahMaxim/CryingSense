@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import logging
+from datetime import datetime
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -197,7 +199,30 @@ if __name__ == "__main__":
         'raw': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'raw')
     }
     model_path = os.path.join(project_root, 'model', 'saved_models', 'cryingsense_cnn_best.pth')
+    validation_report_dir = os.path.join(project_root, 'performance_reports', 'validation_report')
+    logs_dir = os.path.join(project_root, 'performance_reports', 'logs')
     split_json_path = os.path.join(project_root, 'dataset', 'dataset_split.json')
+    
+    # Create directories
+    os.makedirs(validation_report_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    # Setup logging
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(logs_dir, f'validate_{timestamp}.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    
+    logger.info("="*60)
+    logger.info("CryingSense CNN Validation")
+    logger.info("="*60)
     
     print("="*60)
     print("CryingSense CNN Validation")
@@ -297,7 +322,26 @@ if __name__ == "__main__":
     print("Validation Results")
     print("="*60)
     print("\nClassification Report:")
-    print(classification_report(all_labels, all_preds, target_names=list(label_map.keys())))
+    report = classification_report(all_labels, all_preds, target_names=list(label_map.keys()))
+    print(report)
+    
+    # Save validation classification report
+    report_path = os.path.join(validation_report_dir, 'validation_classification_report.txt')
+    with open(report_path, 'w') as f:
+        f.write("CryingSense Model - Validation Classification Report\n")
+        f.write("="*60 + "\n\n")
+        f.write(report)
+    print(f"\nValidation report saved to: {report_path}")
+    
+    # Calculate and log accuracy
+    from sklearn.metrics import accuracy_score
+    val_accuracy = accuracy_score(all_labels, all_preds)
+    logger.info(f"Validation Accuracy: {val_accuracy:.4f}")
+    logger.info(f"Report saved to: {report_path}")
+    
     print("\nConfusion Matrix:")
-    print(confusion_matrix(all_labels, all_preds))
+    cm = confusion_matrix(all_labels, all_preds)
+    print(cm)
     print("="*60)
+    
+    logger.info("Validation Complete")

@@ -1,0 +1,13 @@
+# CryingSense Database Dependencies
+
+# MongoDB driver
+pymongo>=4.6.0
+
+# Data validation
+pydantic>=2.5.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Date/time handling (included in stdlib, but good to note)
+# datetime (stdlib)

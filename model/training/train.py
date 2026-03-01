@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import logging
+from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
@@ -230,7 +232,7 @@ def get_file_list_and_labels(feature_base_dir):
     return file_list, label_map
 
 def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3, 
-                patience=10, save_dir='../saved_models'):
+                patience=10, save_dir='../saved_models', training_report_dir=None):
     """
     Train the model with early stopping, learning rate scheduling, and comprehensive metrics.
     
@@ -242,8 +244,12 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
         epochs: Maximum number of epochs
         lr: Initial learning rate
         patience: Early stopping patience
-        save_dir: Directory to save model checkpoints
+        save_dir: Directory to save model checkpoints (.pth files)
+        training_report_dir: Directory to save training reports (curves, history)
     """
+    # Use training_report_dir if provided, otherwise fall back to save_dir
+    report_dir = training_report_dir if training_report_dir else save_dir
+    logger = logging.getLogger(__name__)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     
@@ -277,6 +283,12 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
     print(f"Max Epochs: {epochs}")
     print(f"Early Stopping Patience: {patience}")
     print("="*60)
+    
+    logger.info("Starting Training")
+    logger.info(f"Device: {device}")
+    logger.info(f"Initial Learning Rate: {lr}")
+    logger.info(f"Max Epochs: {epochs}")
+    logger.info(f"Early Stopping Patience: {patience}")
     
     for epoch in range(epochs):
         # Training phase
@@ -333,12 +345,14 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
         history['val_acc'].append(val_acc)
         history['learning_rates'].append(optimizer.param_groups[0]['lr'])
         
-        # Print epoch results
+        # Print and log epoch results
         print(f"\nEpoch {epoch+1}/{epochs}:")
         print(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
         print(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
         print(f"  Val Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
         print(f"  Learning Rate: {optimizer.param_groups[0]['lr']:.6f}")
+        
+        logger.info(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, LR: {optimizer.param_groups[0]['lr']:.6f}")
         
         # Learning rate scheduling
         scheduler.step(val_acc)
@@ -361,6 +375,7 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
                 'train_loss': train_loss
             }, model_path)
             print(f"  ✓ Best model saved (Val Acc: {val_acc:.4f})")
+            logger.info(f"Best model saved at epoch {epoch+1} with Val Acc: {val_acc:.4f}")
         else:
             epochs_without_improvement += 1
             print(f"  No improvement for {epochs_without_improvement} epoch(s)")
@@ -368,17 +383,18 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
             if epochs_without_improvement >= patience:
                 print(f"\nEarly stopping triggered after {epoch+1} epochs")
                 print(f"Best validation accuracy: {best_val_acc:.4f}")
+                logger.info(f"Early stopping triggered after {epoch+1} epochs. Best Val Acc: {best_val_acc:.4f}")
                 break
         
         print("-"*60)
     
-    # Save training history
-    history_path = os.path.join(save_dir, 'training_history.json')
+    # Save training history to training_report directory
+    history_path = os.path.join(report_dir, 'training_history.json')
     with open(history_path, 'w') as f:
         json.dump(history, f, indent=2)
     
-    # Plot training curves
-    plot_training_history(history, save_dir)
+    # Plot training curves to training_report directory
+    plot_training_history(history, report_dir)
     
     print("\n" + "="*60)
     print("Training Complete")
@@ -388,6 +404,12 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
     print(f"Model saved to: {save_dir}/cryingsense_cnn_best.pth")
     print(f"Training history saved to: {history_path}")
     print("="*60)
+    
+    logger.info("Training Complete")
+    logger.info(f"Best Validation Accuracy: {best_val_acc:.4f}")
+    logger.info(f"Best Validation Loss: {best_val_loss:.4f}")
+    logger.info(f"Model saved to: {save_dir}/cryingsense_cnn_best.pth")
+    logger.info(f"Training history saved to: {history_path}")
     
     return history
 
@@ -451,7 +473,30 @@ if __name__ == "__main__":
         'raw': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'raw')
     }
     save_dir = os.path.join(project_root, 'model', 'saved_models')
+    training_report_dir = os.path.join(project_root, 'performance_reports', 'training_report')
+    logs_dir = os.path.join(project_root, 'performance_reports', 'logs')
     split_json_path = os.path.join(project_root, 'dataset', 'dataset_split.json')
+    
+    # Create directories
+    os.makedirs(training_report_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    # Setup logging
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(logs_dir, f'train_{timestamp}.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    
+    logger.info("="*60)
+    logger.info("CryingSense CNN Training")
+    logger.info("="*60)
     
     print("="*60)
     print("CryingSense CNN Training")
@@ -535,6 +580,7 @@ if __name__ == "__main__":
     print(f"Model size: ~{total_params * 4 / 1024 / 1024:.2f} MB (fp32)")
     print("="*60)
     
-    # Train model
+    # Train model (save_dir is for model weights, training_report_dir is for training outputs)
     history = train_model(model, train_loader, val_loader, device, 
-                         epochs=50, lr=1e-3, patience=10, save_dir=save_dir)
+                         epochs=50, lr=1e-3, patience=10, save_dir=save_dir, 
+                         training_report_dir=training_report_dir)
