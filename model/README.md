@@ -55,11 +55,60 @@ python -m training.evaluate --model saved_models/cryingsense_cnn_best.pth
 ### Inference
 
 ```python
-from model.inference.predict import CryPredictor
+from model.inference.predict import CryingSensePredictor
 
-predictor = CryPredictor('model/saved_models/cryingsense_cnn_best.pth')
-result = predictor.predict('audio.wav')
-print(f"Predicted: {result['class']} ({result['confidence']:.2%})")
+predictor = CryingSensePredictor('model/saved_models/cryingsense_cnn_best.pth')
+result = predictor.predict_single('audio.wav')
+print(f"Predicted: {result['prediction']} ({result['confidence']:.2%})")
+```
+
+### Inference with Database Integration
+
+Store classifications, audio sessions, and audio files automatically:
+
+```python
+from model.inference.predict import CryingSensePredictor
+
+# Initialize with database enabled
+predictor = CryingSensePredictor(
+    model_path='saved_models/cryingsense_cnn_best.pth',
+    save_to_db=True,
+    device_id='ESP32-001',
+    device_source='esp32'
+)
+
+# Start monitoring session
+session_id = predictor.start_new_session()
+
+# Perform inference (automatically saves to database)
+result = predictor.predict_single('baby_cry.wav')
+print(f"Classification ID: {result.get('classification_id')}")
+print(f"Audio File ID: {result.get('audio_file_id')}")
+
+# End session
+predictor.end_current_session()
+```
+
+**See:** [Database Integration Guide](inference/DATABASE_INTEGRATION.md) for detailed documentation
+
+### Command-Line Inference with Database
+
+```bash
+# Single file with database storage
+python -m model.inference.predict \
+  --audio test.wav \
+  --model saved_models/cryingsense_cnn.pth \
+  --save-to-db \
+  --device-id ESP32-001 \
+  --device-source esp32
+
+# With session tracking
+python -m model.inference.predict \
+  --audio test.wav \
+  --model saved_models/cryingsense_cnn.pth \
+  --save-to-db \
+  --device-id ESP32-001 \
+  --session-id monitoring-001
 ```
 
 ### Export for Deployment

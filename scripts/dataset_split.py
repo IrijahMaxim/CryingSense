@@ -1,18 +1,27 @@
 """
 Dataset Split Module for CryingSense
 
-This module splits the dataset into training, validation, and evaluate sets
+This module splits the dataset into training, validation, and evaluation sets
 while ensuring that samples from the same recording session don't appear in multiple splits.
 
 Supports both cleaned (preprocessed) and raw audio datasets.
 
-Split ratios:
-- Training: 80%
-- Validation: 10%
-- Evaluate: 10%
+Default split ratios:
+- Training: 60%
+- Validation: 20%
+- Evaluation: 20%
+
+Custom split configuration:
+- Use --custom-split flag for interactive prompt
+- Specify your own train/val/eval percentages
+- Optionally limit the number of files per class:
+  * Uniform limit (e.g., 50 files per class)
+  * Individual limits per class
+  * Use all files (no limit)
 
 Usage:
-  python dataset_split.py              # Split cleaned data only (default)
+  python dataset_split.py              # Split cleaned data only (default 60/20/20, all files)
+  python dataset_split.py --custom-split  # Interactive custom ratio and file limit prompt
   python dataset_split.py --raw-only   # Split raw data only
   python dataset_split.py --all        # Split both cleaned and raw data
   python dataset_split.py --noise-raw  # All cleaned + only noise from raw
@@ -66,7 +75,7 @@ def get_file_groups(feature_base_dir, classes):
     Uses MFCC directory as reference (all feature types have same files).
     
     Args:
-        feature_base_dir: Base directory for features (e.g., .../feature_extraction/cleaned)
+        feature_base_dir: Base directory for features (e.g., .../features/cleaned)
         classes: List of class names (subdirectories)
     
     Returns:
@@ -92,21 +101,22 @@ def get_file_groups(feature_base_dir, classes):
     return groups
 
 
-def split_dataset(feature_base_dir, output_dir, train_ratio=0.65, val_ratio=0.15, 
-                 eval_ratio=0.20, random_seed=42, class_filter=None):
+def split_dataset(feature_base_dir, output_dir, train_ratio=0.60, val_ratio=0.20, 
+                 eval_ratio=0.20, random_seed=42, class_filter=None, max_files_per_class=None):
     """
     Split feature files into train/validation/evaluate sets by session.
     
-    Splits by FILE COUNTS while keeping sessions together to achieve proper 80/10/10 ratios.
+    Splits by FILE COUNTS while keeping sessions together to achieve proper 60/20/20 ratios.
     
     Args:
-        feature_base_dir: Base directory with extracted features (e.g., .../feature_extraction/cleaned)
+        feature_base_dir: Base directory with extracted features (e.g., .../features/cleaned)
         output_dir: Directory to save split information
-        train_ratio: Proportion for training set (default: 0.80)
-        val_ratio: Proportion for validation set (default: 0.10)
-        eval_ratio: Proportion for evaluate set (default: 0.10)
+        train_ratio: Proportion for training set (default: 0.60)
+        val_ratio: Proportion for validation set (default: 0.20)
+        eval_ratio: Proportion for evaluate set (default: 0.20)
         random_seed: Random seed for reproducibility (default: 42)
         class_filter: List of classes to include, or None for all classes
+        max_files_per_class: Maximum files per class, or None/dict for no limit
     
     Returns:
         dict: Split statistics and file mappings
@@ -114,11 +124,45 @@ def split_dataset(feature_base_dir, output_dir, train_ratio=0.65, val_ratio=0.15
     np.random.seed(random_seed)
     
     # Define classes
-    all_classes = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise']
+    all_classes = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise', 'speech']
     classes = class_filter if class_filter else all_classes
     
     # Get file groups by session (from feature files)
     groups = get_file_groups(feature_base_dir, classes)
+    
+    # Limit files per class if specified
+    if max_files_per_class:
+        for class_name in classes:
+            if class_name in groups:
+                # Get limit for this class
+                if isinstance(max_files_per_class, dict):
+                    limit = max_files_per_class.get(class_name, None)
+                else:
+                    limit = max_files_per_class
+                
+                if limit:
+                    # Count current files and limit sessions if needed
+                    session_ids = list(groups[class_name].keys())
+                    np.random.shuffle(session_ids)  # Randomize session selection
+                    
+                    total_files = 0
+                    selected_sessions = {}
+                    
+                    for session_id in session_ids:
+                        session_files = groups[class_name][session_id]
+                        if total_files + len(session_files) <= limit:
+                            selected_sessions[session_id] = session_files
+                            total_files += len(session_files)
+                        elif total_files < limit:
+                            # Partially include this session
+                            remaining = limit - total_files
+                            selected_sessions[session_id] = session_files[:remaining]
+                            total_files = limit
+                            break
+                        else:
+                            break
+                    
+                    groups[class_name] = selected_sessions
     
     # Initialize split data structure
     splits = {
@@ -229,6 +273,149 @@ def split_dataset(feature_base_dir, output_dir, train_ratio=0.65, val_ratio=0.15
     return split_data
 
 
+def get_custom_split_ratios():
+    """
+    Prompt user for custom split ratios and file count limits.
+    
+    Returns:
+        tuple: (train_ratio, val_ratio, eval_ratio, max_files_per_class)
+    """
+    print("\n" + "="*60)
+    print("Custom Split Configuration")
+    print("="*60)
+    print("\nDefault split: 60% train, 20% val, 20% eval")
+    print("\nOptions:")
+    print("  1. Use default split (60/20/20) with all files")
+    print("  2. Enter custom configuration")
+    print("="*60)
+    
+    while True:
+        choice = input("\nChoose option (1 or 2): ").strip()
+        
+        if choice == '1':
+            print("\n✓ Using default split: 60% train, 20% val, 20% eval")
+            print("✓ Using all available files")
+            return 0.60, 0.20, 0.20, None
+        
+        elif choice == '2':
+            print("\n" + "-"*60)
+            print("Enter custom split ratios (percentages)")
+            print("-"*60)
+            
+            while True:
+                try:
+                    train_pct = float(input("Training set percentage (e.g., 70): ").strip())
+                    val_pct = float(input("Validation set percentage (e.g., 15): ").strip())
+                    eval_pct = float(input("Evaluation set percentage (e.g., 15): ").strip())
+                    
+                    # Validate
+                    total = train_pct + val_pct + eval_pct
+                    if abs(total - 100.0) > 0.01:
+                        print(f"\n❌ Error: Percentages must sum to 100 (got {total:.1f})")
+                        print("Please try again.\n")
+                        continue
+                    
+                    if train_pct <= 0 or val_pct <= 0 or eval_pct <= 0:
+                        print("\n❌ Error: All percentages must be greater than 0")
+                        print("Please try again.\n")
+                        continue
+                    
+                    # Convert to ratios
+                    train_ratio = train_pct / 100.0
+                    val_ratio = val_pct / 100.0
+                    eval_ratio = eval_pct / 100.0
+                    
+                    print(f"\n✓ Custom split: {train_pct:.1f}% train, {val_pct:.1f}% val, {eval_pct:.1f}% eval")
+                    break
+                    
+                except ValueError:
+                    print("\n❌ Error: Please enter valid numbers")
+                    print("Please try again.\n")
+                    continue
+            
+            # Ask about file count limits
+            print("\n" + "-"*60)
+            print("File Count Limits (Optional)")
+            print("-"*60)
+            print("\nLimit the number of files used per class?")
+            print("  1. Use all available files")
+            print("  2. Set a uniform limit for all classes")
+            print("  3. Set individual limits per class")
+            
+            while True:
+                limit_choice = input("\nChoose option (1, 2, or 3): ").strip()
+                
+                if limit_choice == '1':
+                    print("\n✓ Using all available files")
+                    max_files = None
+                    break
+                
+                elif limit_choice == '2':
+                    try:
+                        limit = int(input("\nEnter file limit per class (e.g., 100): ").strip())
+                        if limit <= 0:
+                            print("\n❌ Error: Limit must be greater than 0")
+                            continue
+                        print(f"\n✓ Using {limit} files per class")
+                        max_files = limit
+                        break
+                    except ValueError:
+                        print("\n❌ Error: Please enter a valid number")
+                        continue
+                
+                elif limit_choice == '3':
+                    print("\nEnter file limits for each class (or 0 to use all):")
+                    classes = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise', 'speech']
+                    max_files = {}
+                    
+                    try:
+                        for class_name in classes:
+                            limit = int(input(f"  {class_name}: ").strip())
+                            if limit > 0:
+                                max_files[class_name] = limit
+                        
+                        # Show summary
+                        print("\n✓ Custom limits set:")
+                        for class_name in classes:
+                            if class_name in max_files:
+                                print(f"  {class_name}: {max_files[class_name]} files")
+                            else:
+                                print(f"  {class_name}: all files")
+                        
+                        if not max_files:
+                            max_files = None
+                        break
+                    except ValueError:
+                        print("\n❌ Error: Please enter valid numbers")
+                        continue
+                
+                else:
+                    print("\n❌ Invalid choice. Please enter 1, 2, or 3.")
+            
+            # Final confirmation
+            print("\n" + "="*60)
+            print("Configuration Summary")
+            print("="*60)
+            print(f"Split ratios: {train_pct:.1f}% train, {val_pct:.1f}% val, {eval_pct:.1f}% evaluation")
+            if max_files is None:
+                print("File limits: Using all available files")
+            elif isinstance(max_files, dict):
+                print("File limits: Custom per class")
+            else:
+                print(f"File limits: {max_files} files per class")
+            print("="*60)
+            
+            confirm = input("\nConfirm configuration? (yes/no): ").strip().lower()
+            if confirm in ['yes', 'y']:
+                return train_ratio, val_ratio, eval_ratio, max_files
+            else:
+                print("\nLet's start over...\n")
+                continue
+                        
+        else:
+            print("\n❌ Invalid choice. Please enter 1 or 2.")
+
+
 def main():
     """Main function to run dataset splitting."""
     import sys
@@ -261,6 +448,8 @@ Output: dataset_split.json
                        help='Split both cleaned and raw datasets')
     parser.add_argument('--noise-raw', action='store_true',
                        help='All cleaned data + only noise class from raw')
+    parser.add_argument('--custom-split', action='store_true',
+                       help='Use custom split ratios and file count limits (interactive prompt)')
     
     args = parser.parse_args()
     
@@ -269,8 +458,8 @@ Output: dataset_split.json
     project_root = os.path.dirname(script_dir)
     
     # Define feature extraction directories
-    cleaned_dir = os.path.join(project_root, "dataset", "processed", "feature_extraction", "cleaned")
-    raw_dir = os.path.join(project_root, "dataset", "processed", "feature_extraction", "raw")
+    cleaned_dir = os.path.join(project_root, "dataset", "processed", "features", "cleaned")
+    raw_dir = os.path.join(project_root, "dataset", "processed", "features", "raw")
     output_dir = os.path.join(project_root, "dataset")
     
     # Determine which datasets to process
@@ -299,6 +488,12 @@ Output: dataset_split.json
     
     output_filename = 'dataset_split.json'
     
+    # Get split ratios and file limits (default or custom)
+    if args.custom_split:
+        train_ratio, val_ratio, eval_ratio, max_files_per_class = get_custom_split_ratios()
+    else:
+        train_ratio, val_ratio, eval_ratio, max_files_per_class = 0.60, 0.20, 0.20, None
+    
     # Collect all splits from all datasets
     combined_splits = {
         'train': defaultdict(list),
@@ -317,9 +512,9 @@ Output: dataset_split.json
     print(f"CryingSense Dataset Splitting - {mode_name}")
     print("="*60)
     print(f"Output file: {output_filename}")
-    print(f"Train ratio: 65%")
-    print(f"Validation ratio: 15%")
-    print(f"Evaluate ratio: 20%")
+    print(f"Train ratio: {train_ratio*100:.1f}%")
+    print(f"Validation ratio: {val_ratio*100:.1f}%")
+    print(f"Evaluation ratio: {eval_ratio*100:.1f}%")
     print("="*60)
     print()
     
@@ -335,7 +530,12 @@ Output: dataset_split.json
             continue
         
         # Perform split
-        split_data = split_dataset(data_dir, output_dir, class_filter=class_filter)
+        split_data = split_dataset(data_dir, output_dir, 
+                                   train_ratio=train_ratio,
+                                   val_ratio=val_ratio,
+                                   eval_ratio=eval_ratio,
+                                   class_filter=class_filter,
+                                   max_files_per_class=max_files_per_class)
         sources_processed.append(dataset_name if not class_filter else f"{dataset_name}:{','.join(class_filter)}")
         
         # Merge splits (prefix filenames with source to avoid collisions)
@@ -374,10 +574,11 @@ Output: dataset_split.json
                 'total': dict(combined_stats['total'])
             },
             'config': {
-                'train_ratio': 0.65,
-                'val_ratio': 0.15,
-                'eval_ratio': 0.20,
+                'train_ratio': train_ratio,
+                'val_ratio': val_ratio,
+                'eval_ratio': eval_ratio,
                 'random_seed': 42,
+                'max_files_per_class': max_files_per_class if max_files_per_class else 'all',
                 'classes': ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise']
             }
         }, f, indent=2)

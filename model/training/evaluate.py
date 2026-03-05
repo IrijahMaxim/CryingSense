@@ -17,7 +17,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from sklearn.metrics import (classification_report, confusion_matrix, 
                             precision_recall_fscore_support, accuracy_score)
 from sklearn.model_selection import train_test_split
@@ -28,94 +28,7 @@ from tqdm import tqdm
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from model.models.cnn_model import CryingSenseCNN
-
-
-def get_label_from_path(path):
-    """Extract class label from file path."""
-    return os.path.basename(os.path.dirname(path))
-
-
-class CryingSenseDataset(Dataset):
-    """Dataset for loading feature files."""
-    def __init__(self, file_list, label_map, feature_base_dirs=None):
-        """
-        Args:
-            file_list: List of (mfcc_path, base_dir) tuples or just mfcc paths
-            label_map: Dict mapping class names to indices
-            feature_base_dirs: Dict mapping source names to base directories
-        """
-        self.file_list = file_list
-        self.label_map = label_map
-        self.feature_base_dirs = feature_base_dirs or {}
-    
-    def __len__(self):
-        return len(self.file_list)
-    
-    def __getitem__(self, idx):
-        # Get file info - can be (path, base_dir) tuple or just path
-        item = self.file_list[idx]
-        if isinstance(item, tuple):
-            mfcc_path, base_dir = item
-        else:
-            mfcc_path = item
-            base_dir = self._infer_base_dir(mfcc_path)
-        
-        # Construct paths for other features
-        rel_path = os.path.relpath(mfcc_path, os.path.join(base_dir, 'mfcc'))
-        mel_path = os.path.join(base_dir, 'mel_spectrogram', rel_path)
-        chroma_path = os.path.join(base_dir, 'chroma', rel_path)
-        
-        # Load and combine features
-        mfcc = np.load(mfcc_path)
-        mel = np.load(mel_path)
-        chroma = np.load(chroma_path)
-        
-        x = self._combine_features(mfcc, mel, chroma)
-        x = torch.tensor(x, dtype=torch.float32)
-        
-        label_name = get_label_from_path(mfcc_path)
-        y = self.label_map[label_name]
-        return x, y
-    
-    def _infer_base_dir(self, mfcc_path):
-        """Infer base directory from MFCC path (legacy support)."""
-        path_parts = mfcc_path.replace('\\', '/').split('/')
-        for i, part in enumerate(path_parts):
-            if part == 'mfcc':
-                return '/'.join(path_parts[:i])
-        if self.feature_base_dirs:
-            return list(self.feature_base_dirs.values())[0]
-        return os.path.dirname(os.path.dirname(mfcc_path))
-        
-        x = self._combine_features(mfcc, mel, chroma)
-        x = torch.tensor(x, dtype=torch.float32)
-        
-        label_name = get_label_from_path(mfcc_path)
-        y = self.label_map[label_name]
-        return x, y
-    
-    def _combine_features(self, mfcc, mel, chroma):
-        """Combine features into 4-channel array."""
-        target_height = max(mfcc.shape[0], mel.shape[0], chroma.shape[0])
-        target_width = mfcc.shape[1]
-        
-        mfcc_padded = self._pad_feature(mfcc, (target_height, target_width))
-        mel_padded = self._pad_feature(mel, (target_height, target_width))
-        chroma_padded = self._pad_feature(chroma, (target_height, target_width))
-        
-        delta_mfcc = np.zeros_like(mfcc)
-        delta_mfcc[:, 1:] = mfcc[:, 1:] - mfcc[:, :-1]
-        delta_mfcc_padded = self._pad_feature(delta_mfcc, (target_height, target_width))
-        
-        return np.stack([mfcc_padded, mel_padded, chroma_padded, delta_mfcc_padded], axis=0)
-    
-    def _pad_feature(self, feature, target_shape):
-        """Pad feature to target shape."""
-        padded = np.zeros(target_shape, dtype=feature.dtype)
-        min_h = min(feature.shape[0], target_shape[0])
-        min_w = min(feature.shape[1], target_shape[1])
-        padded[:min_h, :min_w] = feature[:min_h, :min_w]
-        return padded
+from model.training.dataset import CryingSenseDataset, get_label_from_path
 
 
 def get_file_list_and_labels(feature_base_dir):
@@ -358,8 +271,8 @@ def main():
     
     # Feature directories for both cleaned and raw data
     feature_base_dirs = {
-        'cleaned': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned'),
-        'raw': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'raw')
+        'cleaned': os.path.join(project_root, 'dataset', 'processed', 'features', 'cleaned'),
+        'raw': os.path.join(project_root, 'dataset', 'processed', 'features', 'raw')
     }
     model_path = os.path.join(project_root, 'model', 'saved_models', 'cryingsense_cnn_best.pth')
     evaluation_report_dir = os.path.join(project_root, 'performance_reports', 'evaluation_report')

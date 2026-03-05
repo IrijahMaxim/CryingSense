@@ -4,14 +4,20 @@
 This document describes the CryingSense infant cry audio dataset, including its structure, preprocessing parameters, and feature extraction settings.
 
 ## Dataset Classes
-The dataset contains six classes of infant sounds:
+The dataset contains seven classes of infant sounds and non-cry audio:
 
+### Cry Types (Model will alert)
 1. **belly_pain** - Cries indicating abdominal discomfort or pain
 2. **burp** - Sounds related to the need to burp
 3. **discomfort** - General discomfort cries (e.g., temperature, position)
 4. **hunger** - Hunger-related crying
 5. **tired** - Fatigue or sleepiness cries
-6. **noise** - Background noise and non-cry sounds (for filtering/rejection)
+
+### Non-Cry Sounds (Model will ignore)
+6. **noise** - Background noise and non-cry sounds (e.g., vacuum, TV, toys)
+7. **speech** - Human speech and baby babbling/cooing (treated as noise by model)
+
+**Important**: The model treats **speech** samples the same as **noise** - both are classified as sounds to ignore. This ensures the system only alerts on actual crying, not when parents are talking or baby is babbling.
 
 ## Directory Structure
 
@@ -23,7 +29,8 @@ dataset/
 │   ├── discomfort/
 │   ├── hunger/
 │   ├── tired/
-│   └── noise/
+│   ├── noise/
+│   └── speech/                           # Human speech samples (treated as noise)
 │
 ├── processed/
 │   ├── cleaned/                          # Preprocessed audio files
@@ -32,41 +39,77 @@ dataset/
 │   │   ├── discomfort/
 │   │   ├── hunger/
 │   │   ├── tired/
-│   │   └── noise/
+│   │   ├── noise/
+│   │   └── speech/
 │   │
-│   └── feature_extraction/
-│       ├── cleaned/                      # Features from cleaned audio
-│       │   ├── mfcc/
-│       │   │   ├── belly_pain/
-│       │   │   ├── burp/
-│       │   │   ├── discomfort/
-│       │   │   ├── hunger/
-│       │   │   ├── tired/
-│       │   │   └── noise/
-│       │   │
-│       │   ├── mel_spectrogram/
-│       │   │   ├── belly_pain/
-│       │   │   ├── burp/
-│       │   │   ├── discomfort/
-│       │   │   ├── hunger/
-│       │   │   ├── tired/
-│       │   │   └── noise/
-│       │   │
-│       │   └── chroma/
-│       │       ├── belly_pain/
-│       │       ├── burp/
-│       │       ├── discomfort/
-│       │       ├── hunger/
-│       │       ├── tired/
-│       │       └── noise/
+│   └── features/
+│       ├── mfcc/
+│       │   ├── belly_pain/
+│       │   ├── burp/
+│       │   ├── discomfort/
+│       │   ├── hunger/
+│       │   ├── tired/
+│       │   ├── noise/
+│       │   └── speech/
 │       │
-│       └── raw/                          # Features from raw audio (optional)
-│           ├── mfcc/
-│           ├── mel_spectrogram/
-│           └── chroma/
+│       ├── mel_spectrogram/
+│       │   ├── belly_pain/
+│       │   ├── burp/
+│       │   ├── discomfort/
+│       │   ├── hunger/
+│       │   ├── tired/
+│       │   ├── noise/
+│       │   └── speech/
+│       │
+│       └── chroma/
+│           ├── belly_pain/
+│           ├── burp/
+│           ├── discomfort/
+│           ├── hunger/
+│           ├── tired/
+│           ├── noise/
+│           └── speech/
+│
+├── visualizations/                       # Generated visualizations
+│   ├── cleaned/                          # Visualizations from cleaned audio
+│   │   ├── belly_pain/
+│   │   ├── burp/
+│   │   ├── discomfort/
+│   │   ├── hunger/
+│   │   ├── tired/
+│   │   ├── noise/
+│   │   ├── speech/
+│   │   ├── dataset_statistics.png        # Dataset overview statistics
+│   │   └── dataset_summary.txt           # Text summary of dataset
+│   └── raw/                              # Visualizations from raw audio (optional)
 │
 └── dataset_split.json                    # Train/validation/test split info
 ```
+
+## Processing Pipeline
+
+The dataset undergoes several processing stages:
+
+### 1. Audio Preprocessing (`preprocess_audio.py`)
+Cleans and normalizes raw audio files:
+- **Input**: `dataset/raw/{category}/`
+- **Output**: `dataset/processed/cleaned/{category}/`
+- Resamples to 16kHz, trims silence, normalizes volume
+
+### 2. Feature Extraction (`feature_extraction.py`)
+Extracts acoustic features for model training:
+- **Input**: `dataset/processed/cleaned/` (or `dataset/raw/` with `--raw` flag)
+- **Output**: `dataset/processed/features/{cleaned|raw}/{mfcc|mel_spectrogram|chroma}/{category}/`
+- Saves features as `.npy` files for efficient loading during training
+- **Note**: This script focuses ONLY on feature extraction, not visualization
+
+### 3. Visualization (`visualize_dataset.py`)
+Creates comprehensive visualizations and statistics:
+- **Input**: `dataset/processed/cleaned/` (or `dataset/raw/` with `--raw` flag)
+- **Output**: `dataset/visualizations/{cleaned|raw}/`
+- Generates audio feature plots (waveform, spectrogram, mel, MFCC, chroma)
+- Creates dataset statistics (class distribution, duration analysis)
+- Options: visualize all files, sample files, or statistics only
 
 ## Audio Preprocessing Parameters
 
@@ -183,9 +226,10 @@ All features are padded or cropped to consistent dimensions:
 | hunger       |             750 |          ~62.5 min |
 | tired        |             752 |          ~62.7 min |
 | noise        |               0 |              0 min |
+| speech       |               0 |              0 min |
 | **Total**    |        **3,249**|     **~270.8 min** |
 
-*Note: Update this table after adding noise samples*
+*Note: Update this table after adding noise and speech samples*
 
 ## Naming Conventions
 
@@ -285,3 +329,75 @@ When adding new cry recordings:
 - Augmentation should ONLY be applied during training, not stored permanently
 - Always maintain 1:1 mapping between raw, cleaned, and feature files
 - Document any changes to processing parameters in this file
+
+## Speech Category and Model Behavior
+
+### Purpose of Speech Category
+The `speech` category contains human speech and baby babbling/cooing samples that the model should **ignore** (not trigger alerts). This includes:
+
+- Adult speech (parents talking, conversations)
+- Baby babbling, cooing, laughing (non-crying vocalizations)
+- Children talking
+- TV/radio speech
+- Phone conversations
+- Singing and humming
+
+### Model Training Approach
+**Speech is treated identically to environmental noise:**
+
+1. **During Training**: Both `speech` and `noise` samples are labeled as "non-cry" classes
+2. **During Inference**: Model learns to distinguish:
+   - **Cry types** (belly_pain, burp, discomfort, hunger, tired) → ✅ Alert
+   - **Non-cry sounds** (noise, speech) → ❌ No alert
+
+3. **Binary Classification View**:
+   ```
+   Is Crying?
+   ├── YES → Classify cry type (belly_pain, burp, etc.)
+   └── NO → Ignore (noise or speech)
+   ```
+
+### Model Architecture Considerations
+The CNN model can be trained to:
+
+**Option A: Multi-class with 7 classes**
+- Classes: belly_pain, burp, discomfort, hunger, tired, noise, speech
+- Both noise and speech are ignored classes during deployment
+
+**Option B: Multi-class with 6 classes (speech merged into noise)**
+- Classes: belly_pain, burp, discomfort, hunger, tired, noise
+- Speech samples are simply labeled as "noise" during training
+- Simpler model, same practical outcome
+
+**Recommended**: Option A for better interpretability and debugging
+
+### Why Speech Samples Matter
+Without speech training:
+- ❌ Model might misclassify parent talking as crying
+- ❌ Baby babbling might trigger false alarms
+- ❌ TV/radio could cause spurious alerts
+
+With speech training:
+- ✅ Model ignores conversations
+- ✅ Baby babbling doesn't cause alerts
+- ✅ Only actual crying triggers the system
+
+### Adding Speech Samples
+See `dataset/raw/speech/README.md` for:
+- How to add speech samples
+- Recommended sources (LibriSpeech, Common Voice, etc.)
+- Recording guidelines
+- Quality requirements
+
+### Dataset Balance Recommendations
+- **Cry samples**: 70-80% of dataset
+- **Noise samples**: 10-15% of dataset
+- **Speech samples**: 10-15% of dataset
+
+This ensures the model:
+1. Learns cry patterns well (majority class)
+2. Rejects environmental noise
+3. Ignores human speech and babbling
+
+Avoid overwhelming the model with non-cry samples (keep cry samples as majority).
+

@@ -1,0 +1,27 @@
+# CryingSense Trail Run Requirements
+# Real-time cry detection and classification system
+
+# Core Dependencies
+numpy>=1.21.0
+torch>=2.0.0
+librosa>=0.10.0
+scipy>=1.9.0
+tqdm>=4.65.0
+
+# Database
+pymongo>=4.3.0
+pymongo[srv]  # For MongoDB Atlas connection
+dnspython>=2.2.0  # Required for SRV records
+
+# Audio
+sounddevice>=0.4.5  # Optional: for local audio testing
+pyserial>=3.5  # For serial connection mode
+
+# Display
+pygame>=2.1.0  # Optional: for GUI display (can run headless)
+
+# Data Validation
+pydantic>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0

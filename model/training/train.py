@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from tqdm import tqdm
@@ -15,134 +15,8 @@ from tqdm import tqdm
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from model.models.cnn_model import CryingSenseCNN
+from model.training.dataset import CryingSenseDataset, get_label_from_path
 import matplotlib.pyplot as plt
-
-# Custom Dataset for loading .npy feature files
-def get_label_from_path(path):
-    # Assumes path like .../class_name/xxx.npy
-    return os.path.basename(os.path.dirname(path))
-
-class CryingSenseDataset(Dataset):
-    def __init__(self, file_list, label_map, feature_base_dirs=None, augment=False):
-        """
-        Dataset for loading feature files.
-        
-        Args:
-            file_list: List of (mfcc_path, base_dir) tuples or just mfcc paths
-            label_map: Dict mapping class names to indices
-            feature_base_dirs: Dict mapping source names to base directories (for JSON loading)
-            augment: Whether to apply data augmentation
-        """
-        self.file_list = file_list
-        self.label_map = label_map
-        self.feature_base_dirs = feature_base_dirs or {}
-        self.augment = augment
-    
-    def __len__(self):
-        return len(self.file_list)
-    
-    def __getitem__(self, idx):
-        # Get file info - can be (path, base_dir) tuple or just path
-        item = self.file_list[idx]
-        if isinstance(item, tuple):
-            mfcc_path, base_dir = item
-        else:
-            # Legacy: single path, infer base_dir
-            mfcc_path = item
-            base_dir = self._infer_base_dir(mfcc_path)
-        
-        # Construct paths for other features
-        rel_path = os.path.relpath(mfcc_path, os.path.join(base_dir, 'mfcc'))
-        mel_path = os.path.join(base_dir, 'mel_spectrogram', rel_path)
-        chroma_path = os.path.join(base_dir, 'chroma', rel_path)
-        
-        # Load features
-        mfcc = np.load(mfcc_path)
-        mel = np.load(mel_path)
-        chroma = np.load(chroma_path)
-        
-        # Combine features into 4-channel input
-        x = self._combine_features(mfcc, mel, chroma)
-        x = torch.tensor(x, dtype=torch.float32)
-        
-        # Apply data augmentation during training
-        if self.augment:
-            x = self._augment_features(x)
-        
-        label_name = get_label_from_path(mfcc_path)
-        y = self.label_map[label_name]
-        return x, y
-    
-    def _combine_features(self, mfcc, mel, chroma):
-        """Combine multiple features into a 4-channel array."""
-        # Get target dimensions
-        target_height = max(mfcc.shape[0], mel.shape[0], chroma.shape[0])
-        target_width = mfcc.shape[1]  # Time steps should be the same
-        
-        # Pad features to target height
-        mfcc_padded = self._pad_feature(mfcc, (target_height, target_width))
-        mel_padded = self._pad_feature(mel, (target_height, target_width))
-        chroma_padded = self._pad_feature(chroma, (target_height, target_width))
-        
-        # Calculate delta MFCC
-        delta_mfcc = self._compute_delta(mfcc)
-        delta_mfcc_padded = self._pad_feature(delta_mfcc, (target_height, target_width))
-        
-        # Stack into 4-channel array (channels, height, width)
-        combined = np.stack([
-            mfcc_padded,
-            mel_padded,
-            chroma_padded,
-            delta_mfcc_padded
-        ], axis=0)
-        
-        return combined
-    
-    def _pad_feature(self, feature, target_shape):
-        """Pad feature to target shape."""
-        padded = np.zeros(target_shape, dtype=feature.dtype)
-        min_h = min(feature.shape[0], target_shape[0])
-        min_w = min(feature.shape[1], target_shape[1])
-        padded[:min_h, :min_w] = feature[:min_h, :min_w]
-        return padded
-    
-    def _compute_delta(self, feature):
-        """Compute delta (first derivative) of feature."""
-        # Simple delta: difference between adjacent frames
-        delta = np.zeros_like(feature)
-        delta[:, 1:] = feature[:, 1:] - feature[:, :-1]
-        return delta
-    
-    def _augment_features(self, features):
-        """Apply data augmentation to features."""
-        # Random noise addition (10% chance)
-        if torch.rand(1) < 0.1:
-            noise = torch.randn_like(features) * 0.01
-            features = features + noise
-        
-        # Random time shift (20% chance)
-        if torch.rand(1) < 0.2:
-            shift = torch.randint(-10, 10, (1,)).item()
-            features = torch.roll(features, shift, dims=-1)
-        
-        # Random amplitude scaling (20% chance)
-        if torch.rand(1) < 0.2:
-            scale = torch.rand(1) * 0.4 + 0.8  # 0.8 to 1.2
-            features = features * scale
-        
-        return features
-    
-    def _infer_base_dir(self, mfcc_path):
-        """Infer base directory from MFCC path (legacy support)."""
-        # Look for 'mfcc' in path and go up one level
-        path_parts = mfcc_path.replace('\\', '/').split('/')
-        for i, part in enumerate(path_parts):
-            if part == 'mfcc':
-                return '/'.join(path_parts[:i])
-        # Fallback to first registered base dir
-        if self.feature_base_dirs:
-            return list(self.feature_base_dirs.values())[0]
-        return os.path.dirname(os.path.dirname(mfcc_path))
 
 
 def load_split_from_json(json_path, feature_base_dirs):
@@ -211,7 +85,7 @@ def load_split_from_json(json_path, feature_base_dirs):
     return result
 
 
-def get_file_list_and_labels(feature_base_dir):
+def get_feature_file_list(feature_base_dir):
     """Get file list from MFCC directory (used as reference for all features)."""
     mfcc_dir = os.path.join(feature_base_dir, 'mfcc')
     
@@ -469,8 +343,8 @@ if __name__ == "__main__":
     
     # Feature directories for both cleaned and raw data
     feature_base_dirs = {
-        'cleaned': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'cleaned'),
-        'raw': os.path.join(project_root, 'dataset', 'processed', 'feature_extraction', 'raw')
+        'cleaned': os.path.join(project_root, 'dataset', 'processed', 'features', 'cleaned'),
+        'raw': os.path.join(project_root, 'dataset', 'processed', 'features', 'raw')
     }
     save_dir = os.path.join(project_root, 'model', 'saved_models')
     training_report_dir = os.path.join(project_root, 'performance_reports', 'training_report')
@@ -526,7 +400,7 @@ if __name__ == "__main__":
         print("For reproducible splits, run: python scripts/dataset_split.py")
         
         feature_base_dir = feature_base_dirs['cleaned']
-        file_list, label_map = get_file_list_and_labels(feature_base_dir)
+        file_list, label_map = get_feature_file_list(feature_base_dir)
         
         if not file_list:
             print("Error: No feature files found!")
