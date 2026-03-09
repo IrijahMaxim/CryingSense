@@ -4,3 +4,4 @@
 [submodule "android/CryingSense"]
 	path = android/CryingSense
 	url = https://github.com/ncksrcm/CryingSense.git
+	branch = feature/microcontroller-connection
