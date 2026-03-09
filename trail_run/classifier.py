@@ -20,8 +20,12 @@ import librosa
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from audio_buffer import AudioBuffer, RecordingBuffer
-import config
+try:
+    from .audio_buffer import AudioBuffer, RecordingBuffer
+    from . import config
+except ImportError:
+    from audio_buffer import AudioBuffer, RecordingBuffer
+    import config
 
 logger = logging.getLogger(__name__)
 
@@ -214,9 +218,9 @@ class CryClassifier:
             # Load weights
             checkpoint = torch.load(self.model_path, map_location=self.device)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['model_state_dict'])
+                model.load_state_dict(checkpoint['model_state_dict'], strict=False)
             else:
-                model.load_state_dict(checkpoint)
+                model.load_state_dict(checkpoint, strict=False)
             
             model = model.to(self.device)
             model.eval()
@@ -248,10 +252,17 @@ class CryClassifier:
     
     def _classify_loop(self) -> None:
         """Main classification loop."""
+        logger.info("Classification loop started")
+        self._last_amplitude_log = 0
+        
         while self._running:
             try:
                 # Wait for enough audio
-                if self.audio_buffer.duration < config.DETECTION_WINDOW:
+                buffer_duration = self.audio_buffer.duration
+                if buffer_duration < config.DETECTION_WINDOW:
+                    if time.time() - self._last_amplitude_log > 10.0:
+                        logger.debug(f"Waiting for audio... Buffer: {buffer_duration:.2f}s / {config.DETECTION_WINDOW:.2f}s")
+                        self._last_amplitude_log = time.time()
                     time.sleep(0.1)
                     continue
                 
@@ -262,6 +273,14 @@ class CryClassifier:
                 # Check amplitude (simple cry detection)
                 amplitude = np.abs(audio).mean()
                 is_loud = amplitude > config.AMPLITUDE_THRESHOLD
+                
+                # Debug logging every 5 seconds
+                current_time = time.time()
+                if not hasattr(self, '_last_amplitude_log'):
+                    self._last_amplitude_log = 0
+                if current_time - self._last_amplitude_log > 5.0:
+                    logger.info(f"Audio level: {amplitude:.1f} (threshold: {config.AMPLITUDE_THRESHOLD}, cry detected: {is_loud})")
+                    self._last_amplitude_log = current_time
                 
                 if is_loud:
                     self._consecutive_cry_count += 1
@@ -285,9 +304,14 @@ class CryClassifier:
                 if self.recording_buffer.is_recording:
                     self.recording_buffer.append(audio)
                 
-                # Periodic classification during cry
+                # Periodic classification during cry (throttled to every 2 seconds)
                 if self._cry_detected:
-                    self._classify_current_audio()
+                    if not hasattr(self, '_last_classification_time'):
+                        self._last_classification_time = 0
+                    current_time = time.time()
+                    if current_time - self._last_classification_time >= 2.0:
+                        self._classify_current_audio()
+                        self._last_classification_time = current_time
                 
                 time.sleep(0.1)  # 100ms loop
                 
@@ -344,6 +368,8 @@ class CryClassifier:
         result = self._classify_audio(audio)
         
         if result:
+            # Log all predictions, even ignored ones
+            logger.info(f"Classification: {result['class']} ({result['confidence']:.2%}) - Ignored: {self._should_ignore(result['class'])}")
             with self._prediction_lock:
                 self._current_prediction = result
     
@@ -358,6 +384,17 @@ class CryClassifier:
             Classification result dict or None
         """
         try:
+            # Log audio statistics for debugging
+            audio_stats = {
+                'dtype': audio.dtype,
+                'min': float(np.min(audio)),
+                'max': float(np.max(audio)),
+                'mean': float(np.mean(np.abs(audio))),
+                'std': float(np.std(audio)),
+                'samples': len(audio)
+            }
+            logger.info(f"Audio stats - dtype: {audio_stats['dtype']}, range: [{audio_stats['min']:.1f}, {audio_stats['max']:.1f}], mean_abs: {audio_stats['mean']:.1f}, std: {audio_stats['std']:.1f}")
+            
             # Extract features
             features = self.feature_extractor.extract(audio)
             features = features.to(self.device)
@@ -378,6 +415,10 @@ class CryClassifier:
                 for i, name in enumerate(self.class_names)
             }
             
+            # Log all probabilities for debugging
+            probs_str = ", ".join([f"{name}: {prob:.1%}" for name, prob in sorted(all_probs.items(), key=lambda x: x[1], reverse=True)])
+            logger.info(f"All probabilities: {probs_str}")
+            
             result = {
                 'class': predicted_class,
                 'confidence': confidence,
@@ -387,7 +428,10 @@ class CryClassifier:
             
             self._classifications_made += 1
             
-            if self._on_classification and not self._should_ignore(predicted_class):
+            # Always call callback to update display (database filtering handled elsewhere)
+            if self._on_classification:
+                is_ignored = self._should_ignore(predicted_class)
+                logger.info(f"Sending classification to callback: {predicted_class} ({confidence:.2%}) [Ignored: {is_ignored}]")
                 self._on_classification(result)
             
             return result

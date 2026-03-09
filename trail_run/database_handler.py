@@ -23,7 +23,10 @@ import wave
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import config
+try:
+    from . import config
+except ImportError:
+    import config
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +106,7 @@ class DatabaseHandler:
             self._connected = False
             logger.info("Disconnected from MongoDB")
     
-    def register_device(self, device_id: str = None, device_source: str = "esp32",
+    def register_device(self, device_id: str = None, device_type: str = "esp32",
                        mac_address: str = None, firmware_version: str = "1.0.0",
                        metadata: Dict = None) -> Optional[str]:
         """
@@ -111,7 +114,7 @@ class DatabaseHandler:
         
         Args:
             device_id: Device identifier (generated if not provided)
-            device_source: Device type (esp32, android, etc.)
+            device_type: Device type (esp32, android, etc.)
             mac_address: Device MAC address
             firmware_version: Firmware version
             metadata: Additional device metadata
@@ -140,7 +143,7 @@ class DatabaseHandler:
             
             doc = {
                 "device_id": device_id,
-                "device_source": device_source,
+                "device_type": device_type,
                 "mac_address": mac_address,
                 "firmware_version": firmware_version,
                 "metadata": metadata or {},
@@ -198,7 +201,7 @@ class DatabaseHandler:
             doc = {
                 "session_id": session_id,
                 "device_id": device_id,
-                "device_source": config.DEVICE_SOURCE,
+                "device_type": config.DEVICE_TYPE,
                 "start_time": datetime.utcnow(),
                 "end_time": None,
                 "status": "active",
@@ -291,7 +294,7 @@ class DatabaseHandler:
             
             doc = {
                 "timestamp": datetime.utcnow(),
-                "device_source": config.DEVICE_SOURCE,
+                "device_type": config.DEVICE_TYPE,
                 "device_id": device_id,
                 "session_id": session_id,
                 "audio_metadata": {

@@ -39,11 +39,17 @@ pip install -r requirements.txt
 ### 3. Run the System
 
 ```powershell
-# WiFi mode (default)
+# Serial mode on COM3 (default)
 python main.py
 
 # Serial mode (USB connection)
 python main.py --serial COM3
+
+# WiFi mode (opt-in)
+python main.py --wifi
+
+# Computer microphone mode (for testing without ESP32)
+python main.py --microphone
 
 # Headless mode (no display)
 python main.py --headless
@@ -55,16 +61,24 @@ python main.py --no-db
 ## System Architecture
 
 ```
-┌─────────────┐     UDP/WiFi      ┌──────────────────┐
-│   ESP32 +   │ ─────────────────>│   WiFi Receiver  │
-│  INMP441    │   16kHz Audio     │                  │
-└─────────────┘                   └────────┬─────────┘
-                                           │
-                                           v
-                                  ┌──────────────────┐
-                                  │   Audio Buffer   │
-                                  │  (Circular, 10s) │
-                                  └────────┬─────────┘
+           ┌─────────────┐
+           │   ESP32 +   │    UDP/WiFi
+           │  INMP441    │ ────────────┐
+           └─────────────┘             │
+                                       │
+           ┌─────────────┐             │
+           │   ESP32     │    Serial   │     ┌──────────────────┐
+           │   USB       │ ────────────┼────>│  Audio Receiver  │
+           └─────────────┘             │     │  (WiFi/Serial/   │
+                                       │     │   Microphone)    │
+           ┌─────────────┐             │     └────────┬─────────┘
+           │  Computer   │  Microphone │              │
+           │  Microphone │ ────────────┘              │
+           └─────────────┘                            v
+                                           ┌──────────────────┐
+                                           │   Audio Buffer   │
+                                           │  (Circular, 10s) │
+                                           └────────┬─────────┘
                                            │
                     ┌──────────────────────┼──────────────────────┐
                     │                      │                      │
@@ -118,9 +132,13 @@ trail_run/
 Edit `config.py` to customize:
 
 ```python
+# Model
+NUM_CLASSES = 6                   # Must match trained model
+CLASS_NAMES = ['belly_pain', 'burp', 'discomfort', 'hunger', 'noise', 'tired']
+
 # Network
-WIFI_HOST = "0.0.0.0"      # Listen on all interfaces
-WIFI_PORT = 8888           # UDP port
+WIFI_HOST = "0.0.0.0"             # Listen on all interfaces
+WIFI_PORT = 8888                  # UDP port
 
 # Detection
 CONFIDENCE_THRESHOLD = 0.70       # Minimum confidence
@@ -130,8 +148,8 @@ CRY_DETECTION_CONSECUTIVE = 3     # Consecutive windows needed
 # Database
 MONGO_URI = "mongodb+srv://..."   # MongoDB connection string
 
-# Classes to ignore
-IGNORE_CLASSES = ['noise', 'speech']
+# Classes to ignore (won't be saved to database)
+IGNORE_CLASSES = ['noise']        # Only noise is ignored
 ```
 
 ## ESP32 Hardware Setup
@@ -212,7 +230,7 @@ IGNORE_CLASSES = ['noise', 'speech']
 ```json
 {
   "device_id": "abc123",
-  "device_source": "esp32",
+  "device_type": "esp32",
   "mac_address": "AA:BB:CC:DD:EE:FF",
   "firmware_version": "1.0.0",
   "first_seen": "2024-01-01T10:00:00Z",
@@ -223,17 +241,35 @@ IGNORE_CLASSES = ['noise', 'speech']
 ## Troubleshooting
 
 ### No audio received
-1. Check ESP32 is connected to WiFi (serial monitor shows IP)
-2. Verify SERVER_IP in ESP32 firmware matches your computer
-3. Check firewall allows UDP port 8888
-4. Use `--serial COM3` mode for testing without WiFi
+1. Check ESP32 appears as `COM3` in Device Manager (or run with `--serial <PORT>`)
+2. Verify ESP32 firmware is sending binary packets on Serial (USB)
+3. Make sure no other app has the COM port open (Arduino Serial Monitor, etc.)
+4. For WiFi testing instead, run `python main.py --wifi`
+5. Use `--microphone` mode to test with computer mic (no ESP32 needed)
+
+### Microphone issues
+1. Check microphone is working in Windows sound settings
+2. Run `python -c "import sounddevice; print(sounddevice.query_devices())"` to list devices
+3. Make sure sounddevice is installed: `pip install sounddevice`
+4. Try adjusting microphone volume/boost in Windows settings
+5. Check microphone permissions in Windows Privacy settings
 
 ### Model not loading
+
+**Error: "size mismatch" or "Unexpected key(s) in state_dict"**
+
+The trained model must have **6 classes**: `belly_pain`, `burp`, `discomfort`, `hunger`, `noise`, `tired`
+
+If you see dimension errors:
 1. Ensure model exists at `model/saved_models/cryingsense_cnn_best.pth`
-2. Run training if model doesn't exist:
+2. Verify it was trained with 6 classes (NOT 7)
+3. If model is from old training with different classes, retrain:
    ```
    python model/training/train.py
    ```
+4. Model architecture must match: CryingSenseCNN with 4 input channels
+
+**Note**: The system ignores the `noise` class and only saves the 5 cry types to the database.
 
 ### Database connection failed
 1. Check MongoDB Atlas credentials in config.py

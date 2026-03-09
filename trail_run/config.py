@@ -23,8 +23,8 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 # =============================================================================
 NUM_CLASSES = 6
 CLASS_NAMES = ['belly_pain', 'burp', 'discomfort', 'hunger', 'noise', 'tired']
-CRY_CLASSES = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired']  # Excludes noise/speech
-IGNORE_CLASSES = ['noise', 'speech']  # Classes to ignore during detection
+CRY_CLASSES = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired']  # Excludes noise
+IGNORE_CLASSES = ['noise']  # Classes to ignore during detection
 CONFIDENCE_THRESHOLD = 0.70  # Minimum confidence for valid prediction
 
 # =============================================================================
@@ -68,7 +68,7 @@ COLLECTION_DEVICE_REGISTRATIONS = "device_registrations"
 # =============================================================================
 # DEVICE CONFIGURATION
 # =============================================================================
-DEVICE_SOURCE = "esp32"
+DEVICE_TYPE = "esp32"
 DEVICE_ID = None  # Will be set from ESP32 MAC address or auto-generated
 
 # =============================================================================
@@ -90,7 +90,7 @@ COLOR_LISTENING = (100, 200, 100)
 # =============================================================================
 # DETECTION CONFIGURATION
 # =============================================================================
-AMPLITUDE_THRESHOLD = 500  # Minimum amplitude to consider as potential cry
+AMPLITUDE_THRESHOLD = 100  # Minimum amplitude to consider as potential cry (adjusted for microphone)
 CRY_DETECTION_CONSECUTIVE = 3  # Consecutive windows needed to confirm cry
 POST_CRY_SILENCE = 2.0  # Seconds of silence after cry to stop recording
 PRE_CRY_BUFFER = 1.0  # Seconds before cry to include in recording

@@ -15,8 +15,12 @@ import numpy as np
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from audio_buffer import AudioBuffer
-import config
+try:
+    from .audio_buffer import AudioBuffer
+    from . import config
+except ImportError:
+    from audio_buffer import AudioBuffer
+    import config
 
 # Try to import pygame (optional for headless mode)
 try:
@@ -243,59 +247,72 @@ class WaveformDisplay:
             text = self._font.render("REC", True, (255, 100, 100))
             self._screen.blit(text, (195, panel_y + 7))
         
-        # Classification result
+        # Classification result - ALWAYS show, even noise
         if prediction:
             class_name = prediction['class'].upper().replace('_', ' ')
             confidence = prediction['confidence']
             
-            # Don't show noise/speech
-            if prediction['class'] not in config.IGNORE_CLASSES:
-                # Class name
-                text = self._font_large.render(class_name, True, (255, 255, 255))
-                self._screen.blit(text, (10, panel_y + 40))
+            # Gray out ignored classes
+            is_ignored = prediction['class'] in config.IGNORE_CLASSES
+            text_color = (150, 150, 150) if is_ignored else (255, 255, 255)
+            
+            # Class name
+            text = self._font_large.render(class_name, True, text_color)
+            self._screen.blit(text, (10, panel_y + 40))
+            
+            # Show (IGNORED) label if applicable
+            if is_ignored:
+                ignored_text = self._font.render("(IGNORED)", True, (200, 100, 100))
+                self._screen.blit(ignored_text, (240, panel_y + 55))
+            
+            # Confidence bar
+            bar_x = 10
+            bar_y = panel_y + 90
+            bar_width = 300
+            bar_height = 20
+            
+            # Background
+            pygame.draw.rect(
+                self._screen,
+                (50, 50, 60),
+                (bar_x, bar_y, bar_width, bar_height),
+                border_radius=3
+            )
+            
+            # Fill
+            fill_width = int(bar_width * confidence)
+            fill_color = self._confidence_color(confidence) if not is_ignored else (100, 100, 100)
+            pygame.draw.rect(
+                self._screen,
+                fill_color,
+                (bar_x, bar_y, fill_width, bar_height),
+                border_radius=3
+            )
+            
+            # Percentage text
+            pct_text = f"{confidence:.1%}"
+            text = self._font.render(pct_text, True, text_color)
+            self._screen.blit(text, (bar_x + bar_width + 10, bar_y + 2))
+            
+            # All probabilities (smaller) - show ALL classes including noise
+            probs_y = panel_y + 40
+            probs_x = 350
+            for cls_name, prob in sorted(
+                prediction['probabilities'].items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            ):
+                is_current = cls_name == prediction['class']
+                is_cls_ignored = cls_name in config.IGNORE_CLASSES
                 
-                # Confidence bar
-                bar_x = 10
-                bar_y = panel_y + 90
-                bar_width = 300
-                bar_height = 20
+                if is_current:
+                    color = (200, 200, 200) if not is_cls_ignored else (150, 150, 150)
+                else:
+                    color = (120, 120, 120) if not is_cls_ignored else (80, 80, 80)
                 
-                # Background
-                pygame.draw.rect(
-                    self._screen,
-                    (50, 50, 60),
-                    (bar_x, bar_y, bar_width, bar_height),
-                    border_radius=3
-                )
-                
-                # Fill
-                fill_width = int(bar_width * confidence)
-                fill_color = self._confidence_color(confidence)
-                pygame.draw.rect(
-                    self._screen,
-                    fill_color,
-                    (bar_x, bar_y, fill_width, bar_height),
-                    border_radius=3
-                )
-                
-                # Percentage text
-                pct_text = f"{confidence:.1%}"
-                text = self._font.render(pct_text, True, (255, 255, 255))
-                self._screen.blit(text, (bar_x + bar_width + 10, bar_y + 2))
-                
-                # All probabilities (smaller)
-                probs_y = panel_y + 40
-                probs_x = 350
-                for cls_name, prob in sorted(
-                    prediction['probabilities'].items(), 
-                    key=lambda x: x[1], 
-                    reverse=True
-                ):
-                    if cls_name not in config.IGNORE_CLASSES:
-                        color = (200, 200, 200) if cls_name == prediction['class'] else (120, 120, 120)
-                        text = self._font.render(f"{cls_name}: {prob:.1%}", True, color)
-                        self._screen.blit(text, (probs_x, probs_y))
-                        probs_y += 20
+                text = self._font.render(f"{cls_name}: {prob:.1%}", True, color)
+                self._screen.blit(text, (probs_x, probs_y))
+                probs_y += 20
     
     def _draw_status_bar(self) -> None:
         """Draw status bar at bottom."""

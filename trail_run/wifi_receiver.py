@@ -13,8 +13,12 @@ import logging
 from typing import Optional, Callable
 import numpy as np
 
-from audio_buffer import AudioBuffer
-import config
+try:
+    from .audio_buffer import AudioBuffer
+    from . import config
+except ImportError:
+    from audio_buffer import AudioBuffer
+    import config
 
 logger = logging.getLogger(__name__)
 
@@ -254,8 +258,18 @@ class SerialAudioReceiver:
     """
     Fallback receiver for serial connection (USB).
     
-    Parses the SAMPLES: format from ESP32 serial output.
+    Parses binary packets from ESP32 serial output.
+
+    Packet format:
+    - Sync bytes: 0xAA 0x55
+    - Header: [packet_id (4B), timestamp (4B), sample_count (2B), flags (2B)]
+    - Audio: int16 PCM samples (sample_count * 2 bytes)
     """
+
+    SYNC_BYTES = b"\xAA\x55"
+    HEADER_SIZE = 12
+    HEADER_FORMAT = "<IIHH"  # packet_id, timestamp_ms, sample_count, flags
+    MAX_SAMPLES_PER_PACKET = 4096
     
     def __init__(self, audio_buffer: AudioBuffer, port: str = "COM3", 
                  baudrate: int = 115200):
@@ -274,23 +288,44 @@ class SerialAudioReceiver:
         self._serial = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._rx_buffer = bytearray()
+        
+        # Connection tracking
+        self._connected = False
+        self._last_data_time = 0
         
         # Statistics
-        self._lines_received = 0
+        self._packets_received = 0
         self._samples_received = 0
+        self._bytes_received = 0
+        self._errors = 0
+        
+        # Callbacks
+        self._on_connect: Optional[Callable] = None
+        self._on_disconnect: Optional[Callable] = None
+        self._on_error: Optional[Callable] = None
     
     def start(self) -> bool:
         """Start the serial receiver."""
         try:
             import serial
-            self._serial = serial.Serial(self.port, self.baudrate, timeout=1.0)
+            self._serial = serial.Serial(self.port, self.baudrate, timeout=0.2)
             self._running = True
             self._thread = threading.Thread(target=self._receive_loop, daemon=True)
             self._thread.start()
             logger.info(f"Serial receiver started on {self.port}")
+            
+            # Mark as connected and trigger callback
+            self._connected = True
+            self._last_data_time = time.time()
+            if self._on_connect:
+                self._on_connect(self.port)
+            
             return True
         except Exception as e:
             logger.error(f"Failed to start serial receiver: {e}")
+            if self._on_error:
+                self._on_error(e)
             return False
     
     def stop(self) -> None:
@@ -301,38 +336,103 @@ class SerialAudioReceiver:
         if self._serial:
             self._serial.close()
             self._serial = None
+        
+        # Trigger disconnect callback
+        if self._connected and self._on_disconnect:
+            self._on_disconnect(self.port)
+        self._connected = False
     
     def _receive_loop(self) -> None:
         """Main receive loop."""
         while self._running:
             try:
-                line = self._serial.readline().decode('utf-8', errors='ignore').strip()
-                if line.startswith("SAMPLES:"):
-                    self._process_samples(line[8:])
-                    self._lines_received += 1
+                chunk = self._serial.read(4096)
+                if not chunk:
+                    continue
+
+                self._bytes_received += len(chunk)
+                self._rx_buffer.extend(chunk)
+                self._process_buffer()
             except Exception as e:
                 logger.error(f"Serial error: {e}")
+                self._errors += 1
+                if self._on_error:
+                    self._on_error(e)
                 time.sleep(0.1)
-    
-    def _process_samples(self, data: str) -> None:
-        """Process SAMPLES: line from ESP32."""
-        try:
-            values = [int(v) for v in data.split(',') if v.strip()]
-            if values:
-                # Upsample from 32 samples to approximate real sample rate
-                # ESP32 sends 32 samples per ~32ms, we need 16000/s
-                samples = np.array(values, dtype=np.int16)
-                
-                # Simple upsampling via interpolation
-                target_samples = int(len(samples) * (config.SAMPLE_RATE * 0.032 / 32))
-                if target_samples > len(samples):
-                    indices = np.linspace(0, len(samples) - 1, target_samples)
-                    samples = np.interp(indices, np.arange(len(samples)), samples).astype(np.int16)
-                
+
+    def _process_buffer(self) -> None:
+        """Parse as many complete packets as possible from the receive buffer."""
+        while True:
+            sync_idx = self._rx_buffer.find(self.SYNC_BYTES)
+
+            if sync_idx == -1:
+                # Keep only a small tail for sync-byte overlap across reads.
+                if len(self._rx_buffer) > 1:
+                    self._rx_buffer = self._rx_buffer[-1:]
+                return
+
+            if sync_idx > 0:
+                # Drop noise/log bytes before sync.
+                del self._rx_buffer[:sync_idx]
+
+            if len(self._rx_buffer) < 2 + self.HEADER_SIZE:
+                return
+
+            header_start = 2
+            header_end = header_start + self.HEADER_SIZE
+
+            try:
+                packet_id, timestamp_ms, sample_count, flags = struct.unpack(
+                    self.HEADER_FORMAT,
+                    self._rx_buffer[header_start:header_end]
+                )
+            except struct.error:
+                del self._rx_buffer[:2]
+                self._errors += 1
+                continue
+
+            if sample_count == 0 or sample_count > self.MAX_SAMPLES_PER_PACKET:
+                # Invalid header; resync after first sync byte.
+                del self._rx_buffer[:1]
+                self._errors += 1
+                continue
+
+            payload_bytes = sample_count * 2
+            packet_size = 2 + self.HEADER_SIZE + payload_bytes
+
+            if len(self._rx_buffer) < packet_size:
+                return
+
+            payload_start = header_end
+            payload_end = payload_start + payload_bytes
+            payload = self._rx_buffer[payload_start:payload_end]
+
+            samples = np.frombuffer(payload, dtype=np.int16)
+            if samples.size:
                 self.audio_buffer.write(samples)
-                self._samples_received += len(samples)
-        except Exception as e:
-            logger.error(f"Sample parse error: {e}")
+                self._samples_received += samples.size
+                self._packets_received += 1
+                self._last_data_time = time.time()
+
+            del self._rx_buffer[:packet_size]
+    
+    def on_connect(self, callback: Callable) -> None:
+        """Set connection callback."""
+        self._on_connect = callback
+    
+    def on_disconnect(self, callback: Callable) -> None:
+        """Set disconnection callback."""
+        self._on_disconnect = callback
+    
+    def on_error(self, callback: Callable) -> None:
+        """Set error callback."""
+        self._on_error = callback
+    
+    @property
+    def is_connected(self) -> bool:
+        """Whether serial port is connected and receiving data."""
+        return (self._connected and self._running and 
+                time.time() - self._last_data_time < 5.0)
     
     @property
     def is_running(self) -> bool:
@@ -341,7 +441,164 @@ class SerialAudioReceiver:
     def get_stats(self) -> dict:
         return {
             "running": self._running,
+            "connected": self.is_connected,
             "port": self.port,
-            "lines_received": self._lines_received,
+            "packets_received": self._packets_received,
             "samples_received": self._samples_received,
+            "bytes_received": self._bytes_received,
+            "errors": self._errors,
+        }
+
+
+class MicrophoneAudioReceiver:
+    """
+    Computer microphone receiver for testing without ESP32.
+    
+    Uses sounddevice to capture audio from system microphone.
+    """
+    
+    def __init__(self, audio_buffer: AudioBuffer, device_index: int = None,
+                 sample_rate: int = None):
+        """
+        Initialize microphone receiver.
+        
+        Args:
+            audio_buffer: Buffer to write received audio to
+            device_index: Microphone device index (None for default)
+            sample_rate: Sample rate (default from config)
+        """
+        self.audio_buffer = audio_buffer
+        self.device_index = device_index
+        self.sample_rate = sample_rate or config.SAMPLE_RATE
+        
+        self._stream = None
+        self._running = False
+        
+        # Connection tracking
+        self._connected = False
+        self._last_data_time = 0
+        
+        # Statistics
+        self._samples_received = 0
+        self._chunks_received = 0
+        
+        # Callbacks
+        self._on_connect: Optional[Callable] = None
+        self._on_disconnect: Optional[Callable] = None
+        self._on_error: Optional[Callable] = None
+    
+    def start(self) -> bool:
+        """Start the microphone receiver."""
+        try:
+            import sounddevice as sd
+            
+            # List available devices
+            devices = sd.query_devices()
+            logger.info(f"Available audio devices: {len(devices)}")
+            
+            # Get default input device if not specified
+            if self.device_index is None:
+                default_device = sd.query_devices(kind='input')
+                logger.info(f"Using default microphone: {default_device['name']}")
+            else:
+                device_info = sd.query_devices(self.device_index)
+                logger.info(f"Using microphone #{self.device_index}: {device_info['name']}")
+            
+            # Create input stream
+            self._stream = sd.InputStream(
+                device=self.device_index,
+                channels=1,
+                samplerate=self.sample_rate,
+                dtype='int16',
+                blocksize=512,  # Match ESP32 buffer size
+                callback=self._audio_callback
+            )
+            
+            self._stream.start()
+            self._running = True
+            self._connected = True
+            self._last_data_time = time.time()
+            
+            logger.info(f"Microphone started at {self.sample_rate}Hz")
+            
+            # Trigger connect callback
+            if self._on_connect:
+                self._on_connect("Computer Microphone")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start microphone: {e}")
+            if self._on_error:
+                self._on_error(e)
+            return False
+    
+    def stop(self) -> None:
+        """Stop the microphone receiver."""
+        self._running = False
+        
+        if self._stream:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        
+        # Trigger disconnect callback
+        if self._connected and self._on_disconnect:
+            self._on_disconnect("Computer Microphone")
+        self._connected = False
+        
+        logger.info("Microphone stopped")
+    
+    def _audio_callback(self, indata, frames, time_info, status):
+        """Audio callback called by sounddevice."""
+        if status:
+            logger.warning(f"Microphone status: {status}")
+            if self._on_error:
+                self._on_error(status)
+        
+        if not self._running:
+            return
+        
+        # Convert to 1D int16 array
+        samples = indata[:, 0].astype(np.int16)
+        
+        # Write to buffer
+        self.audio_buffer.write(samples)
+        
+        # Update statistics
+        self._samples_received += len(samples)
+        self._chunks_received += 1
+        self._last_data_time = time.time()
+    
+    def on_connect(self, callback: Callable) -> None:
+        """Set connection callback."""
+        self._on_connect = callback
+    
+    def on_disconnect(self, callback: Callable) -> None:
+        """Set disconnection callback."""
+        self._on_disconnect = callback
+    
+    def on_error(self, callback: Callable) -> None:
+        """Set error callback."""
+        self._on_error = callback
+    
+    @property
+    def is_connected(self) -> bool:
+        """Whether microphone is connected and receiving data."""
+        return (self._connected and self._running and 
+                time.time() - self._last_data_time < 5.0)
+    
+    @property
+    def is_running(self) -> bool:
+        return self._running
+    
+    def get_stats(self) -> dict:
+        return {
+            "running": self._running,
+            "connected": self.is_connected,
+            "device": "Computer Microphone",
+            "sample_rate": self.sample_rate,
+            "chunks_received": self._chunks_received,
+            "samples_received": self._samples_received,
+            "bytes_received": self._samples_received * 2,
         }

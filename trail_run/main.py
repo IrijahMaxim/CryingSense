@@ -11,8 +11,10 @@ Complete real-time cry detection and classification system:
 6. Sends results to MongoDB Atlas
 
 Usage:
-    python main.py                    # WiFi mode (default)
+    python main.py                    # Serial mode on COM3 (default)
     python main.py --serial COM3      # Serial mode (USB)
+    python main.py --wifi             # WiFi mode (UDP)
+    python main.py --microphone       # Computer microphone mode
     python main.py --headless         # No display (terminal only)
     python main.py --no-db            # Skip database connection
 """
@@ -30,12 +32,20 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-import config
-from audio_buffer import AudioBuffer
-from wifi_receiver import WiFiAudioReceiver, SerialAudioReceiver
-from classifier import CryClassifier
-from database_handler import DatabaseHandler
-from waveform_display import WaveformDisplay, TerminalDisplay, PYGAME_AVAILABLE
+try:
+    from . import config
+    from .audio_buffer import AudioBuffer
+    from .wifi_receiver import WiFiAudioReceiver, SerialAudioReceiver, MicrophoneAudioReceiver
+    from .classifier import CryClassifier
+    from .database_handler import DatabaseHandler
+    from .waveform_display import WaveformDisplay, TerminalDisplay, PYGAME_AVAILABLE
+except ImportError:
+    import config
+    from audio_buffer import AudioBuffer
+    from wifi_receiver import WiFiAudioReceiver, SerialAudioReceiver, MicrophoneAudioReceiver
+    from classifier import CryClassifier
+    from database_handler import DatabaseHandler
+    from waveform_display import WaveformDisplay, TerminalDisplay, PYGAME_AVAILABLE
 
 # Configure logging
 logging.basicConfig(
@@ -60,17 +70,19 @@ class CryingSenseSystem:
     - Waveform display
     """
     
-    def __init__(self, use_serial: str = None, headless: bool = False,
-                 use_database: bool = True):
+    def __init__(self, use_serial: str = None, use_microphone: bool = False,
+                 headless: bool = False, use_database: bool = True):
         """
         Initialize the system.
         
         Args:
             use_serial: Serial port name (None for WiFi mode)
+            use_microphone: Use computer microphone instead of ESP32
             headless: Run without display
             use_database: Whether to use database
         """
         self.use_serial = use_serial
+        self.use_microphone = use_microphone
         self.headless = headless
         self.use_database = use_database
         
@@ -110,7 +122,12 @@ class CryingSenseSystem:
             logger.info(f"  Buffer: {config.BUFFER_DURATION}s @ {config.SAMPLE_RATE}Hz")
             
             # 2. Initialize receiver
-            if self.use_serial:
+            if self.use_microphone:
+                logger.info("Initializing computer microphone...")
+                self.receiver = MicrophoneAudioReceiver(
+                    audio_buffer=self.audio_buffer
+                )
+            elif self.use_serial:
                 logger.info(f"Initializing serial receiver on {self.use_serial}...")
                 self.receiver = SerialAudioReceiver(
                     audio_buffer=self.audio_buffer,
@@ -150,7 +167,7 @@ class CryingSenseSystem:
                 if self.database.connect():
                     # Register device
                     device_id = self.database.register_device(
-                        device_source=config.DEVICE_SOURCE,
+                        device_type=config.DEVICE_TYPE,
                         firmware_version="1.0.0"
                     )
                     logger.info(f"  Device ID: {device_id}")
@@ -203,7 +220,12 @@ class CryingSenseSystem:
             self._start_time = time.time()
             
             logger.info("System running!")
-            logger.info(f"Listening on {'serial ' + self.use_serial if self.use_serial else 'UDP port ' + str(config.WIFI_PORT)}")
+            if self.use_microphone:
+                logger.info("Listening on computer microphone")
+            elif self.use_serial:
+                logger.info(f"Listening on serial {self.use_serial}")
+            else:
+                logger.info(f"Listening on UDP port {config.WIFI_PORT}")
             logger.info("Press Ctrl+C to stop")
             print()
             
@@ -308,9 +330,8 @@ class CryingSenseSystem:
     
     def _on_classification(self, result: dict) -> None:
         """Handle periodic classification during cry."""
-        # Update display with live prediction
-        if result['class'] not in config.IGNORE_CLASSES:
-            self.display.set_prediction(result)
+        # Update display with live prediction (show ALL predictions, including noise)
+        self.display.set_prediction(result)
     
     def _print_summary(self) -> None:
         """Print session summary."""
@@ -366,8 +387,20 @@ def main():
     parser.add_argument(
         '--serial', '-s',
         type=str,
-        default=None,
-        help='Serial port for USB connection (e.g., COM3, /dev/ttyUSB0)'
+        default='COM3',
+        help='Serial port for USB connection (default: COM3)'
+    )
+
+    parser.add_argument(
+        '--wifi',
+        action='store_true',
+        help='Force WiFi mode (disables serial mode)'
+    )
+    
+    parser.add_argument(
+        '--microphone', '-m',
+        action='store_true',
+        help='Use computer microphone instead of ESP32'
     )
     
     parser.add_argument(
@@ -400,6 +433,10 @@ def main():
     # Update config if port specified
     if args.port != config.WIFI_PORT:
         config.WIFI_PORT = args.port
+
+    # WiFi mode explicitly disables serial receiver.
+    if args.wifi:
+        args.serial = None
     
     if args.debug:
         config.DEBUG_MODE = True
@@ -413,6 +450,7 @@ def main():
     # Create and run system
     system = CryingSenseSystem(
         use_serial=args.serial,
+        use_microphone=args.microphone,
         headless=args.headless,
         use_database=not args.no_db
     )
