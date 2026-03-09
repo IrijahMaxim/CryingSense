@@ -1,6 +1,3 @@
-[submodule "android/android"]
-	path = android/android
-	url = https://github.com/ncksrcm/CryingSense.git
 [submodule "android/CryingSense"]
 	path = android/CryingSense
 	url = https://github.com/ncksrcm/CryingSense.git
