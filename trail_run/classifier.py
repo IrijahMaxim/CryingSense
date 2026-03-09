@@ -481,6 +481,19 @@ class CryClassifier:
     def on_classification(self, callback: Callable) -> None:
         """Set callback for each classification."""
         self._on_classification = callback
+
+    def force_offline_reset(self) -> None:
+        """Reset live detection state when audio source is offline."""
+        self._consecutive_cry_count = 0
+        self._silence_start_time = 0
+        self._cry_detected = False
+
+        # Drop unfinished recording when source disappears.
+        if self.recording_buffer.is_recording:
+            self.recording_buffer.stop()
+
+        with self._prediction_lock:
+            self._current_prediction = None
     
     @property
     def current_prediction(self) -> Optional[Dict]:

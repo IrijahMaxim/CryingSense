@@ -304,7 +304,13 @@ class CryingSenseSystem:
     def _on_device_disconnect(self, device_addr: str) -> None:
         """Handle device disconnection."""
         logger.info(f"Device disconnected: {device_addr}")
-        self.display.set_status("Waiting for device...")
+        self.display.set_status("Offline mode (no packets for 5s)")
+
+        # WiFi listener offline fallback: stop using stale audio immediately.
+        if not self.use_serial and not self.use_microphone:
+            self.audio_buffer.clear()
+            if self.classifier:
+                self.classifier.force_offline_reset()
     
     def _on_cry_start(self) -> None:
         """Handle cry detection start."""
