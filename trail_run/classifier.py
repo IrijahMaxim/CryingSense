@@ -274,11 +274,12 @@ class CryClassifier:
                 amplitude = np.abs(audio).mean()
                 is_loud = amplitude > config.AMPLITUDE_THRESHOLD
                 
-                # Debug logging every 5 seconds
+                # Lightweight telemetry logging
                 current_time = time.time()
                 if not hasattr(self, '_last_amplitude_log'):
                     self._last_amplitude_log = 0
-                if current_time - self._last_amplitude_log > 5.0:
+                log_interval = 10.0 if not config.DEBUG_MODE else 5.0
+                if current_time - self._last_amplitude_log > log_interval:
                     logger.info(f"Audio level: {amplitude:.1f} (threshold: {config.AMPLITUDE_THRESHOLD}, cry detected: {is_loud})")
                     self._last_amplitude_log = current_time
                 
@@ -368,7 +369,6 @@ class CryClassifier:
         result = self._classify_audio(audio)
         
         if result:
-            # Log all predictions, even ignored ones
             logger.info(f"Classification: {result['class']} ({result['confidence']:.2%}) - Ignored: {self._should_ignore(result['class'])}")
             with self._prediction_lock:
                 self._current_prediction = result
@@ -384,16 +384,23 @@ class CryClassifier:
             Classification result dict or None
         """
         try:
-            # Log audio statistics for debugging
-            audio_stats = {
-                'dtype': audio.dtype,
-                'min': float(np.min(audio)),
-                'max': float(np.max(audio)),
-                'mean': float(np.mean(np.abs(audio))),
-                'std': float(np.std(audio)),
-                'samples': len(audio)
-            }
-            logger.info(f"Audio stats - dtype: {audio_stats['dtype']}, range: [{audio_stats['min']:.1f}, {audio_stats['max']:.1f}], mean_abs: {audio_stats['mean']:.1f}, std: {audio_stats['std']:.1f}")
+            if config.DEBUG_MODE and logger.isEnabledFor(logging.DEBUG):
+                audio_stats = {
+                    'dtype': audio.dtype,
+                    'min': float(np.min(audio)),
+                    'max': float(np.max(audio)),
+                    'mean': float(np.mean(np.abs(audio))),
+                    'std': float(np.std(audio)),
+                    'samples': len(audio)
+                }
+                logger.debug(
+                    "Audio stats - dtype: %s, range: [%.1f, %.1f], mean_abs: %.1f, std: %.1f",
+                    audio_stats['dtype'],
+                    audio_stats['min'],
+                    audio_stats['max'],
+                    audio_stats['mean'],
+                    audio_stats['std'],
+                )
             
             # Extract features
             features = self.feature_extractor.extract(audio)
@@ -415,9 +422,11 @@ class CryClassifier:
                 for i, name in enumerate(self.class_names)
             }
             
-            # Log all probabilities for debugging
-            probs_str = ", ".join([f"{name}: {prob:.1%}" for name, prob in sorted(all_probs.items(), key=lambda x: x[1], reverse=True)])
-            logger.info(f"All probabilities: {probs_str}")
+            if config.DEBUG_MODE and logger.isEnabledFor(logging.DEBUG):
+                probs_str = ", ".join([
+                    f"{name}: {prob:.1%}" for name, prob in sorted(all_probs.items(), key=lambda x: x[1], reverse=True)
+                ])
+                logger.debug(f"All probabilities: {probs_str}")
             
             result = {
                 'class': predicted_class,
@@ -431,7 +440,13 @@ class CryClassifier:
             # Always call callback to update display (database filtering handled elsewhere)
             if self._on_classification:
                 is_ignored = self._should_ignore(predicted_class)
-                logger.info(f"Sending classification to callback: {predicted_class} ({confidence:.2%}) [Ignored: {is_ignored}]")
+                if config.DEBUG_MODE and logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "Sending classification to callback: %s (%.2f%%) [Ignored: %s]",
+                        predicted_class,
+                        confidence * 100.0,
+                        is_ignored,
+                    )
                 self._on_classification(result)
             
             return result

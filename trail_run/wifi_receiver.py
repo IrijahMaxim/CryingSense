@@ -87,7 +87,11 @@ class WiFiAudioReceiver:
         
         try:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+            # Use an exclusive bind so only one receiver process can own the UDP port.
+            # This avoids silent packet splitting when multiple app instances run.
+            if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             self._socket.bind((self.host, self.port))
             self._socket.settimeout(1.0)  # Allow periodic checks
             
@@ -99,7 +103,8 @@ class WiFiAudioReceiver:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to start receiver: {e}")
+            logger.error(f"Failed to start receiver on {self.host}:{self.port}: {e}")
+            logger.error("Tip: close other CryingSense instances using the same UDP port.")
             self._cleanup()
             return False
     

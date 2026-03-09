@@ -1,22 +1,22 @@
 #include <Arduino.h>
-// #include <WiFi.h>        // COMMENTED OUT - Using COM port instead
-// #include <WiFiUdp.h>     // COMMENTED OUT - Using COM port instead
+#include <WiFi.h>
+#include <WiFiUdp.h>
 #include <driver/i2s.h>
 
 /*
- * ESP32 INMP441 Audio Transmitter over COM Port (Serial)
+ * ESP32 INMP441 Audio Transmitter over WiFi UDP
  * 
  * Captures audio from INMP441 microphone and sends to PC/Raspberry Pi
- * via Serial (USB) for real-time cry classification.
+ * via WiFi UDP for real-time cry classification.
  * 
  * HARDWARE CONNECTIONS:
- *   INMP441     ESP32
- *   VDD    ->   3.3V
- *   GND    ->   GND
+ *   INMP441     ESP32      MB102      <- DC
+ *   VDD    ->   3.3V    ->  3.3V
+ *   GND    ->   GND     ->  GND
  *   SD     ->   D16
  *   WS     ->   D17
  *   SCK    ->   D18
- *   L/R    ->   GND (left channel)
+ *   L/R    ->   GND
  * 
  * HARDWARE TIPS TO REDUCE NOISE/SPIKES:
  * 1. Use a stable 3.3V power supply (not USB 5V with voltage regulator if possible)
@@ -28,21 +28,24 @@
  */
 
 // =============================================================================
-// WIFI CONFIGURATION - COMMENTED OUT (Using COM port)
+// WIFI CONFIGURATION
 // =============================================================================
-// const char* WIFI_SSID = "DESKTOP-3DNLEM0 8867";      // Your WiFi network name
-// const char* WIFI_PASSWORD = "8292J?a2";   // Your WiFi password
+const char* WIFI_SSID = "PLDTHOMEFIBRE538D";
+const char* WIFI_PASSWORD = "PLDTWIFI88IEC";
+const char* SERVER_IP = "192.168.1.9";   // Backend server host (same LAN)
+const int SERVER_PORT = 8888;             // Backend UDP ingest port
 
-// Raspberry Pi / Computer IP and port - COMMENTED OUT (Using COM port)
-// const char* SERVER_IP = "192.168.1.9";      // IP of computer running main.py
-// const int SERVER_PORT = 8888;                  // Must match config.py WIFI_PORT
-
-// =============================================================================
-// SERIAL CONFIGURATION
-// =============================================================================
 #define SERIAL_BAUD_RATE 115200
 #define SERIAL_SYNC_BYTE_1 0xAA
 #define SERIAL_SYNC_BYTE_2 0x55
+
+// =============================================================================
+// TRANSPORT MODES
+// =============================================================================
+// WiFi UDP remains primary. Serial can be used as fallback or mirror.
+#define ENABLE_SERIAL_DEBUG_LOGS 1
+#define ENABLE_SERIAL_AUDIO_FALLBACK 0
+#define ENABLE_SERIAL_AUDIO_MIRROR 0
 
 // =============================================================================
 // I2S MICROPHONE CONFIGURATION
@@ -63,6 +66,9 @@
 #define LED_PWM_CHANNEL 0
 #define LED_PWM_FREQ 5000
 #define LED_PWM_RESOLUTION 8
+#define LED_CONNECTED_IDLE_BRIGHTNESS 16
+#define LED_OFFLINE_BLINK_BRIGHTNESS 120
+#define LED_OFFLINE_BLINK_INTERVAL_MS 300
 
 // =============================================================================
 // AUDIO PROCESSING
@@ -91,11 +97,15 @@ int loudCount = 0;                     // Counter for sustained detection
 // =============================================================================
 // GLOBALS
 // =============================================================================
-// WiFiUDP udp;                              // COMMENTED OUT - Using COM port
+WiFiUDP udp;
 uint32_t packetId = 0;
 bool firstPacket = true;
-// unsigned long lastWiFiCheck = 0;          // COMMENTED OUT - Using COM port
-// const unsigned long WIFI_RETRY_INTERVAL = 10000;  // COMMENTED OUT
+unsigned long lastWiFiCheck = 0;
+const unsigned long WIFI_RETRY_INTERVAL = 10000;
+uint32_t udpSendFailures = 0;
+uint32_t serialFallbackPackets = 0;
+bool ledOfflineBlinkState = false;
+unsigned long lastLedBlinkToggle = 0;
 
 int16_t sBuffer[BUFFER_SIZE];
 uint8_t txBuffer[HEADER_SIZE + BUFFER_SIZE * 2];  // Header + 16-bit samples
@@ -103,33 +113,40 @@ uint8_t txBuffer[HEADER_SIZE + BUFFER_SIZE * 2];  // Header + 16-bit samples
 // Forward declarations
 void i2s_install();
 void i2s_setpin();
-// void connectWiFi();                       // COMMENTED OUT - Using COM port
-// bool sendAudioPacket(int16_t* samples, int count, uint16_t flags);  // COMMENTED OUT
-bool sendAudioPacketSerial(int16_t* samples, int count, uint16_t flags);  // Serial version
+void connectWiFi();
+bool sendAudioPacket(int16_t* samples, int count, uint16_t flags);
+bool sendAudioPacketSerial(int16_t* samples, int count, uint16_t flags);
+void bootLedSelfTest();
 
 // =============================================================================
 // SETUP
 // =============================================================================
 void setup() {
+#if ENABLE_SERIAL_DEBUG_LOGS
     Serial.begin(115200);
     delay(1000);
-    
+
     Serial.println("\n========================================");
     Serial.println("CryingSense ESP32 Audio Transmitter");
-    Serial.println("Mode: COM Port (Serial)");
+    Serial.println("Mode: WiFi UDP + optional Serial fallback");
     Serial.println("========================================");
+#endif
     
     // Setup LED
     ledcSetup(LED_PWM_CHANNEL, LED_PWM_FREQ, LED_PWM_RESOLUTION);
     ledcAttachPin(LED_PIN, LED_PWM_CHANNEL);
     ledcWrite(LED_PWM_CHANNEL, 0);
+    bootLedSelfTest();
+#if ENABLE_SERIAL_DEBUG_LOGS
     Serial.println("LED configured");
+#endif
     
-    // Connect to WiFi - COMMENTED OUT (Using COM port)
-    // connectWiFi();
+    connectWiFi();
     
     // Initialize I2S
+#if ENABLE_SERIAL_DEBUG_LOGS
     Serial.println("Initializing I2S...");
+#endif
     i2s_install();
     i2s_setpin();
     i2s_start(I2S_PORT);
@@ -141,13 +158,15 @@ void setup() {
         i2s_read(I2S_PORT, &dummy, BYTES_TO_READ, &bytes_read, 100);
         delay(10);
     }
+#if ENABLE_SERIAL_DEBUG_LOGS
     Serial.println("I2S initialized and buffer cleared");
+#endif
     
-    // Initialize UDP - COMMENTED OUT (Using COM port)
-    // udp.begin(8889);  // Local port (different from server port)
-    // Serial.println("UDP initialized");
+    udp.begin(8889);
+#if ENABLE_SERIAL_DEBUG_LOGS
+    Serial.println("UDP initialized");
     
-    Serial.println("\nReady to transmit audio via Serial!");
+    Serial.println("\nReady to transmit audio via WiFi UDP!");
     Serial.print("Baud Rate: ");
     Serial.println(SERIAL_BAUD_RATE);
     Serial.print("Software Gain: ");
@@ -155,89 +174,108 @@ void setup() {
     Serial.println("x");
     Serial.println("Thresholds - Ambient: 30 | Crying: 100 | Loud: 250");
     Serial.println("========================================\n");
+#endif
 }
 
 // =============================================================================
 // MAIN LOOP
 // =============================================================================
 void loop() {
-    // Periodically check and retry WiFi connection (non-blocking) - COMMENTED OUT
-    // unsigned long currentTime = millis();
-    // if (WiFi.status() != WL_CONNECTED && (currentTime - lastWiFiCheck > WIFI_RETRY_INTERVAL)) {
-    //     Serial.println("WiFi disconnected! Attempting reconnect...");
-    //     connectWiFi();
-    //     lastWiFiCheck = currentTime;
-    // }
+    unsigned long currentTime = millis();
+    if (WiFi.status() != WL_CONNECTED && (currentTime - lastWiFiCheck > WIFI_RETRY_INTERVAL)) {
+#if ENABLE_SERIAL_DEBUG_LOGS
+        Serial.println("WiFi disconnected! Attempting reconnect...");
+#endif
+        connectWiFi();
+        lastWiFiCheck = currentTime;
+    }
     
-    // Read audio from I2S
+    // Read audio from I2S with a short timeout so status LED keeps updating
+    // even if the mic is disconnected or miswired.
     size_t bytesIn = 0;
     int32_t raw32Buffer[BUFFER_SIZE];
-    
-    esp_err_t result = i2s_read(I2S_PORT, &raw32Buffer, BYTES_TO_READ, &bytesIn, portMAX_DELAY);
-    
-    if (result != ESP_OK || bytesIn == 0) {
-        return;
+    int samples_read = 0;
+    bool hasAudio = false;
+
+    esp_err_t result = i2s_read(I2S_PORT, &raw32Buffer, BYTES_TO_READ, &bytesIn, 20 / portTICK_PERIOD_MS);
+
+    if (result == ESP_OK && bytesIn > 0) {
+        hasAudio = true;
+        samples_read = bytesIn / 4;
+
+        // Convert 32-bit to 16-bit
+        for (int i = 0; i < samples_read; ++i) {
+            sBuffer[i] = (int16_t)(raw32Buffer[i] >> 16);
+        }
+
+        // Remove DC offset
+        long dc_sum = 0;
+        for (int i = 0; i < samples_read; ++i) {
+            dc_sum += sBuffer[i];
+        }
+        int16_t dc_offset = dc_sum / samples_read;
+
+        for (int i = 0; i < samples_read; ++i) {
+            sBuffer[i] = sBuffer[i] - dc_offset;
+        }
+
+        // Apply software gain for increased sensitivity
+        for (int i = 0; i < samples_read; ++i) {
+            float amplified = (float)sBuffer[i] * SOFTWARE_GAIN;
+            amplified = constrain(amplified, -32768, 32767);
+            sBuffer[i] = (int16_t)amplified;
+        }
     }
-    
-    int samples_read = bytesIn / 4;
-    
-    // Convert 32-bit to 16-bit
-    for (int i = 0; i < samples_read; ++i) {
-        sBuffer[i] = (int16_t)(raw32Buffer[i] >> 16);
-    }
-    
-    // Remove DC offset
-    long dc_sum = 0;
-    for (int i = 0; i < samples_read; ++i) {
-        dc_sum += sBuffer[i];
-    }
-    int16_t dc_offset = dc_sum / samples_read;
-    
-    for (int i = 0; i < samples_read; ++i) {
-        sBuffer[i] = sBuffer[i] - dc_offset;
-    }
-    
-    // Apply software gain for increased sensitivity
-    for (int i = 0; i < samples_read; ++i) {
-        float amplified = (float)sBuffer[i] * SOFTWARE_GAIN;
-        amplified = constrain(amplified, -32768, 32767);
-        sBuffer[i] = (int16_t)amplified;
-    }
-    
+
     // Calculate amplitude with spike rejection filter
     long sum_abs = 0;
     int16_t peak = 0;
     int valid_samples = 0;
     
     // First pass: calculate rough average to detect spikes
-    long rough_sum = 0;
-    for (int i = 0; i < samples_read; ++i) {
-        rough_sum += abs(sBuffer[i]);
-    }
-    int rough_avg = rough_sum / samples_read;
-    int spike_threshold = rough_avg * 10; // Reject samples > 10x average
-    
-    // Second pass: calculate amplitude excluding spikes
-    for (int i = 0; i < samples_read; ++i) {
-        int16_t abs_val = abs(sBuffer[i]);
-        
-        // Reject obvious spikes (likely power noise)
-        if (abs_val < spike_threshold || spike_threshold == 0) {
-            sum_abs += abs_val;
-            valid_samples++;
-            if (abs_val > peak) peak = abs_val;
+    if (hasAudio && samples_read > 0) {
+        long rough_sum = 0;
+        for (int i = 0; i < samples_read; ++i) {
+            rough_sum += abs(sBuffer[i]);
+        }
+        int rough_avg = rough_sum / samples_read;
+        int spike_threshold = rough_avg * 10; // Reject samples > 10x average
+
+        // Second pass: calculate amplitude excluding spikes
+        for (int i = 0; i < samples_read; ++i) {
+            int16_t abs_val = abs(sBuffer[i]);
+
+            // Reject obvious spikes (likely power noise)
+            if (abs_val < spike_threshold || spike_threshold == 0) {
+                sum_abs += abs_val;
+                valid_samples++;
+                if (abs_val > peak) peak = abs_val;
+            }
         }
     }
     
     int amplitude = valid_samples > 0 ? sum_abs / valid_samples : 0;
     
-    // Update LED brightness based on amplitude
+    // Update LED behavior so status is visible even without serial monitor.
     int brightness = 0;
     if (amplitude > AMBIENT_THRESHOLD) {
         brightness = (int)((amplitude / MAX_AMPLITUDE) * 255.0);
         brightness = constrain(brightness, 0, 255);
     }
-    ledcWrite(LED_PWM_CHANNEL, brightness);
+
+    if (WiFi.status() == WL_CONNECTED) {
+        if (brightness < LED_CONNECTED_IDLE_BRIGHTNESS) {
+            brightness = LED_CONNECTED_IDLE_BRIGHTNESS;
+        }
+        ledcWrite(LED_PWM_CHANNEL, brightness);
+    } else {
+        unsigned long now = millis();
+        if (now - lastLedBlinkToggle >= LED_OFFLINE_BLINK_INTERVAL_MS) {
+            ledOfflineBlinkState = !ledOfflineBlinkState;
+            lastLedBlinkToggle = now;
+        }
+        ledcWrite(LED_PWM_CHANNEL, ledOfflineBlinkState ? LED_OFFLINE_BLINK_BRIGHTNESS : 0);
+    }
     
     // Baby cry detection with sustained sound check
     if (amplitude > CRYING_THRESHOLD) {
@@ -263,17 +301,29 @@ void loop() {
         flags |= FLAG_CRY_DETECTED;
     }
     
-    // Send audio packet (only if WiFi connected) - COMMENTED OUT
-    // if (WiFi.status() == WL_CONNECTED) {
-    //     sendAudioPacket(sBuffer, samples_read, flags);
-    // }
-    
-    // Send audio packet via Serial (COM port)
+    bool sentUdp = false;
+    bool usedSerialFallback = false;
+    if (WiFi.status() == WL_CONNECTED) {
+        sentUdp = sendAudioPacket(sBuffer, samples_read, flags);
+        if (!sentUdp) {
+            udpSendFailures++;
+        }
+    }
+
+#if ENABLE_SERIAL_AUDIO_MIRROR
     sendAudioPacketSerial(sBuffer, samples_read, flags);
+#elif ENABLE_SERIAL_AUDIO_FALLBACK
+    if (!sentUdp) {
+        sendAudioPacketSerial(sBuffer, samples_read, flags);
+        usedSerialFallback = true;
+        serialFallbackPackets++;
+    }
+#endif
     
     // Periodic status output
     static unsigned long lastStatus = 0;
     if (millis() - lastStatus > 2000) {
+#if ENABLE_SERIAL_DEBUG_LOGS
         Serial.print("Amp: ");
         Serial.print(amplitude);
         Serial.print(" | Peak: ");
@@ -292,35 +342,54 @@ void loop() {
         } else {
             Serial.print("LOUD CRY!");
         }
-        Serial.println(" | Mode: Serial");
-        // WiFi status output - COMMENTED OUT
-        // if (WiFi.status() == WL_CONNECTED) {
-        //     Serial.print(" | RSSI: ");
-        //     Serial.print(WiFi.RSSI());
-        //     Serial.print(" dBm");
-        // } else {
-        //     Serial.print(" | WiFi: OFFLINE");
-        // }
-        // Serial.println();
+        Serial.print(" | TX: ");
+        if (sentUdp) {
+            Serial.print("UDP");
+        } else if (usedSerialFallback) {
+            Serial.print("SERIAL_FALLBACK");
+        } else if (ENABLE_SERIAL_AUDIO_MIRROR) {
+            Serial.print("SERIAL_MIRROR");
+        } else {
+            Serial.print("NO_LINK");
+        }
+        Serial.print(" | WiFi: ");
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.print("OK");
+            Serial.print(" | RSSI: ");
+            Serial.print(WiFi.RSSI());
+            Serial.print(" dBm");
+        } else {
+            Serial.print("OFFLINE");
+        }
+        Serial.print(" | UDP_FAIL: ");
+        Serial.print(udpSendFailures);
+        Serial.print(" | SERIAL_FB_PKTS: ");
+        Serial.print(serialFallbackPackets);
+        Serial.println();
+#endif
         lastStatus = millis();
     }
 }
 
 // =============================================================================
-// WIFI CONNECTION - COMMENTED OUT (Using COM port)
+// WIFI CONNECTION
 // =============================================================================
-/*
 void connectWiFi() {
+#if ENABLE_SERIAL_DEBUG_LOGS
     Serial.print("Connecting to WiFi: ");
     Serial.println(WIFI_SSID);
+#endif
     
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 30) {
         delay(500);
+    #if ENABLE_SERIAL_DEBUG_LOGS
         Serial.print(".");
+    #endif
         attempts++;
         
         // Blink LED while connecting
@@ -328,80 +397,79 @@ void connectWiFi() {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
+        // Re-bind UDP after (re)connect so the sender socket is always valid.
+        udp.stop();
+        udp.begin(8889);
+#if ENABLE_SERIAL_DEBUG_LOGS
         Serial.println(" Connected!");
         Serial.print("IP Address: ");
         Serial.println(WiFi.localIP());
         Serial.print("MAC Address: ");
         Serial.println(WiFi.macAddress());
+#endif
         ledcWrite(LED_PWM_CHANNEL, 0);
     } else {
+#if ENABLE_SERIAL_DEBUG_LOGS
         Serial.println(" Failed!");
-        Serial.println("Continuing in offline mode - audio will be captured but not sent");
+        Serial.println("Continuing in offline mode - using serial fallback if enabled");
         Serial.println("Will retry WiFi connection in loop...");
+#endif
         ledcWrite(LED_PWM_CHANNEL, 0);
     }
 }
-*/
+
+void bootLedSelfTest() {
+    for (int i = 0; i < 3; i++) {
+        ledcWrite(LED_PWM_CHANNEL, 180);
+        delay(120);
+        ledcWrite(LED_PWM_CHANNEL, 0);
+        delay(120);
+    }
+}
+
+// =============================================================================
+// SEND AUDIO PACKET VIA UDP
+// =============================================================================
+bool sendAudioPacket(int16_t* samples, int count, uint16_t flags) {
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
+
+    uint32_t timestamp = millis();
+
+    memcpy(txBuffer, &packetId, 4);
+    memcpy(txBuffer + 4, &timestamp, 4);
+    memcpy(txBuffer + 8, &count, 2);
+    memcpy(txBuffer + 10, &flags, 2);
+    memcpy(txBuffer + HEADER_SIZE, samples, count * 2);
+
+    int totalSize = HEADER_SIZE + (count * 2);
+    udp.beginPacket(SERVER_IP, SERVER_PORT);
+    size_t written = udp.write(txBuffer, totalSize);
+    int result = udp.endPacket();
+
+    packetId++;
+
+    return (result == 1 && written == (size_t)totalSize);
+}
 
 // =============================================================================
 // SEND AUDIO PACKET VIA SERIAL (COM PORT)
 // =============================================================================
 bool sendAudioPacketSerial(int16_t* samples, int count, uint16_t flags) {
-    // Build header
     uint32_t timestamp = millis();
-    
-    // Send sync bytes first (to identify packet start)
+
     Serial.write(SERIAL_SYNC_BYTE_1);
     Serial.write(SERIAL_SYNC_BYTE_2);
-    
-    // Send header: packet_id (4B), timestamp (4B), sample_count (2B), flags (2B)
     Serial.write((uint8_t*)&packetId, 4);
     Serial.write((uint8_t*)&timestamp, 4);
     Serial.write((uint8_t*)&count, 2);
     Serial.write((uint8_t*)&flags, 2);
-    
-    // Send audio samples (16-bit, little-endian)
     Serial.write((uint8_t*)samples, count * 2);
-    
+
     packetId++;
-    
     return true;
 }
-
-// =============================================================================
-// SEND AUDIO PACKET VIA UDP - COMMENTED OUT (Using COM port)
-// =============================================================================
-/*
-bool sendAudioPacket(int16_t* samples, int count, uint16_t flags) {
-    // Safety check - don't send if WiFi not connected
-    if (WiFi.status() != WL_CONNECTED) {
-        return false;
-    }
-    
-    // Build header
-    uint32_t timestamp = millis();
-    
-    // Pack header: packet_id (4B), timestamp (4B), sample_count (2B), flags (2B)
-    memcpy(txBuffer, &packetId, 4);
-    memcpy(txBuffer + 4, &timestamp, 4);
-    memcpy(txBuffer + 8, &count, 2);
-    memcpy(txBuffer + 10, &flags, 2);
-    
-    // Copy audio samples (16-bit, little-endian)
-    memcpy(txBuffer + HEADER_SIZE, samples, count * 2);
-    
-    // Send UDP packet
-    int totalSize = HEADER_SIZE + (count * 2);
-    
-    udp.beginPacket(SERVER_IP, SERVER_PORT);
-    size_t written = udp.write(txBuffer, totalSize);
-    int result = udp.endPacket();
-    
-    packetId++;
-    
-    return (result == 1 && written == totalSize);
-}
-*/
 
 // =============================================================================
 // I2S CONFIGURATION

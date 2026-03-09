@@ -75,13 +75,25 @@ class DatabaseHandler:
         try:
             from pymongo import MongoClient
             from pymongo.server_api import ServerApi
-            
-            self._client = MongoClient(
-                self.mongo_uri,
-                server_api=ServerApi('1'),
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000,
-            )
+            try:
+                import certifi
+                ca_file = certifi.where()
+            except Exception:
+                ca_file = None
+
+            client_kwargs = {
+                "server_api": ServerApi('1'),
+                "serverSelectionTimeoutMS": 12000,
+                "connectTimeoutMS": 12000,
+                "socketTimeoutMS": 12000,
+                "retryWrites": True,
+                "appname": "CryingSenseTrailRun",
+                "tls": True,
+            }
+            if ca_file:
+                client_kwargs["tlsCAFile"] = ca_file
+
+            self._client = MongoClient(self.mongo_uri, **client_kwargs)
             
             # Test connection
             self._client.admin.command('ping')
@@ -93,9 +105,32 @@ class DatabaseHandler:
             return True
             
         except Exception as e:
-            logger.error(f"MongoDB connection failed: {e}")
-            self._connected = False
-            return False
+            logger.warning(f"MongoDB primary connect failed: {e}")
+
+            # Retry without custom CA file in case corporate SSL inspection
+            # injects certs into OS trust store only.
+            try:
+                from pymongo import MongoClient
+                from pymongo.server_api import ServerApi
+                self._client = MongoClient(
+                    self.mongo_uri,
+                    server_api=ServerApi('1'),
+                    serverSelectionTimeoutMS=12000,
+                    connectTimeoutMS=12000,
+                    socketTimeoutMS=12000,
+                    retryWrites=True,
+                    appname="CryingSenseTrailRun",
+                    tls=True,
+                )
+                self._client.admin.command('ping')
+                self._db = self._client[self.database_name]
+                self._connected = True
+                logger.info(f"Connected to MongoDB (fallback TLS): {self.database_name}")
+                return True
+            except Exception as fallback_error:
+                logger.error(f"MongoDB connection failed: {fallback_error}")
+                self._connected = False
+                return False
     
     def disconnect(self) -> None:
         """Disconnect from MongoDB."""
@@ -202,6 +237,7 @@ class DatabaseHandler:
                 "session_id": session_id,
                 "device_id": device_id,
                 "device_type": config.DEVICE_TYPE,
+                "device_source": "wifi_udp",
                 "start_time": datetime.utcnow(),
                 "end_time": None,
                 "status": "active",
@@ -297,6 +333,7 @@ class DatabaseHandler:
                 "device_type": config.DEVICE_TYPE,
                 "device_id": device_id,
                 "session_id": session_id,
+                "device_source": "wifi_udp",
                 "audio_metadata": {
                     "sample_rate": config.SAMPLE_RATE,
                     "duration_seconds": duration_seconds,
@@ -378,6 +415,7 @@ class DatabaseHandler:
                 "filename": filename,
                 "device_id": device_id,
                 "session_id": session_id,
+                "device_source": "wifi_udp",
                 "classification_id": classification_id,
                 "file_data": wav_bytes,
                 "file_size_bytes": len(wav_bytes),

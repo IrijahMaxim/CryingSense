@@ -11,7 +11,7 @@ Complete real-time cry detection and classification system:
 6. Sends results to MongoDB Atlas
 
 Usage:
-    python main.py                    # WiFi mode (UDP, default)
+    python main.py                    # Serial mode on COM3 (default)
     python main.py --serial COM3      # Serial mode (USB)
     python main.py --wifi             # WiFi mode (UDP)
     python main.py --microphone       # Computer microphone mode
@@ -25,7 +25,6 @@ import argparse
 import logging
 import signal
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 
@@ -101,7 +100,6 @@ class CryingSenseSystem:
         # Statistics
         self._start_time = None
         self._cries_saved = 0
-        self._db_executor = None
     
     def initialize(self) -> bool:
         """
@@ -167,7 +165,6 @@ class CryingSenseSystem:
                 self.database = DatabaseHandler()
                 
                 if self.database.connect():
-                    self._db_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-save")
                     # Register device
                     device_id = self.database.register_device(
                         device_type=config.DEVICE_TYPE,
@@ -281,10 +278,6 @@ class CryingSenseSystem:
         if self.database:
             self.database.end_session()
             self.database.disconnect()
-
-        if self._db_executor:
-            self._db_executor.shutdown(wait=False, cancel_futures=False)
-            self._db_executor = None
         
         # Print summary
         self._print_summary()
@@ -323,13 +316,9 @@ class CryingSenseSystem:
         # Save to database
         if self.database and 'audio' in result:
             try:
-                if self._db_executor:
-                    self._db_executor.submit(self._save_cry_event_async, result)
-                    logger.info("  Queued database save")
-                else:
-                    saved = self.database.save_cry_event(result, result['audio'])
-                    self._cries_saved += 1
-                    logger.info(f"  Saved to database (files: {saved})")
+                saved = self.database.save_cry_event(result, result['audio'])
+                self._cries_saved += 1
+                logger.info(f"  Saved to database (files: {saved})")
             except Exception as e:
                 logger.error(f"  Database save failed: {e}")
         
@@ -343,17 +332,6 @@ class CryingSenseSystem:
         """Handle periodic classification during cry."""
         # Update display with live prediction (show ALL predictions, including noise)
         self.display.set_prediction(result)
-
-    def _save_cry_event_async(self, result: dict) -> None:
-        """Persist cry event in background so UI/classifier stays responsive."""
-        if not self.database:
-            return
-        try:
-            saved = self.database.save_cry_event(result, result['audio'])
-            self._cries_saved += 1
-            logger.info(f"  Saved to database (files: {saved})")
-        except Exception as e:
-            logger.error(f"  Database save failed (async): {e}")
     
     def _print_summary(self) -> None:
         """Print session summary."""
@@ -409,8 +387,8 @@ def main():
     parser.add_argument(
         '--serial', '-s',
         type=str,
-        default=None,
-        help='Serial port for USB connection (default: disabled, WiFi mode)'
+        default='COM3',
+        help='Serial port for USB connection (default: COM3)'
     )
 
     parser.add_argument(
