@@ -73,7 +73,7 @@ const int SERVER_PORT = 8888;             // Backend UDP ingest port
 // =============================================================================
 // AUDIO PROCESSING
 // =============================================================================
-#define SOFTWARE_GAIN 1.0              // Amplification factor (increase if needed)
+#define SOFTWARE_GAIN 1.5              // Amplification factor (increase if needed)
 
 // Baby Crying Detection thresholds
 #define AMBIENT_THRESHOLD 30.0         // Normal room noise level

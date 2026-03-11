@@ -43,6 +43,8 @@ venv.bak/
 # PyTorch models (large files)
 *.pth
 *.pt
+# Keep the best model checkpoint tracked
+!model/saved_models/cryingsense_cnn_best.pth
 
 # Processed data and features (can be regenerated)
 dataset/processed/
@@ -55,9 +57,10 @@ experiments/performance_reports/
 
 # Audio test recordings
 audio_test/recordings/
-*.wav
 *.mp3
 *.flac
+# Ignore .wav files only in processed dataset (allow raw .wav elsewhere)
+dataset/processed/**/*.wav
 
 # OS
 .DS_Store
