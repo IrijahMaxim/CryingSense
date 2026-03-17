@@ -1,112 +1,88 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useBaby } from '../../src/context/BabyContext';
+import { useTheme } from '../../src/context/ThemeContext';
+import BottomNavigation from '../../components/BottomNavigation';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+export default function HistoryTabScreen() {
+  const { cryEvents } = useBaby();
+  const { colors, isDark } = useTheme();
 
-export default function TabTwoScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 80 }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.text }}>History</Text>
+          <TouchableOpacity onPress={() => router.push('/record')}>
+            <Ionicons name="add-circle" size={32} color="#60A5FA" />
+          </TouchableOpacity>
+        </View>
+
+        {/* History List */}
+        {cryEvents && cryEvents.length > 0 ? (
+          cryEvents.map((event, index) => (
+            <View 
+              key={index}
+              style={{ 
+                backgroundColor: isDark ? '#2a2a2a' : 'white', 
+                padding: 16, 
+                borderRadius: 12, 
+                marginBottom: 12, 
+                shadowColor: '#000', 
+                shadowOffset: { width: 0, height: 2 }, 
+                shadowOpacity: isDark ? 0.3 : 0.1, 
+                shadowRadius: 4, 
+                elevation: 3 
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 }}>
+                    {event.type || 'Cry Detected'}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666' }}>
+                    {new Date(event.timestamp).toLocaleString()}
+                  </Text>
+                </View>
+                <View style={{ 
+                  backgroundColor: '#4CAF50', 
+                  paddingHorizontal: 8, 
+                  paddingVertical: 4, 
+                  borderRadius: 12 
+                }}>
+                  <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>Analyzed</Text>
+                </View>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={{ 
+            backgroundColor: isDark ? '#2a2a2a' : 'white', 
+            padding: 32, 
+            borderRadius: 12, 
+            alignItems: 'center', 
+            shadowColor: '#000', 
+            shadowOffset: { width: 0, height: 2 }, 
+            shadowOpacity: isDark ? 0.3 : 0.1, 
+            shadowRadius: 4, 
+            elevation: 3 
           }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+            <Ionicons name="time-outline" size={48} color={isDark ? '#666' : '#ccc'} style={{ marginBottom: 16 }} />
+            <Text style={{ fontSize: 16, color: colors.text, textAlign: 'center', marginBottom: 8 }}>
+              No recordings yet
+            </Text>
+            <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666', textAlign: 'center' }}>
+              Start recording to see your baby's cry history
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+      
+      {/* Bottom Navigation */}
+      <BottomNavigation />
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-});

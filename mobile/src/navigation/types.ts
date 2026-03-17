@@ -1,4 +1,3 @@
-// navigation/types.ts
 export type RootStackParamList = {
   HomeStack: undefined;
   HomeScreen: undefined;
@@ -6,9 +5,5 @@ export type RootStackParamList = {
   HistoryScreen: undefined;
   SettingsScreen: undefined;
   AnalysisResultScreen: undefined;
+  EditBabyProfileScreen: undefined;
 };
-
-{
-  HomeScreen: undefined;
-  SettingsScreen: undefined;
-}

@@ -1,35 +1,18 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import styles from '@/styles/AppStyles';
-import { RootStackParamList } from '@/navigation/types'; // Make sure this exists
+import { useTheme } from '../context/ThemeContext';
+import BottomNavigation from '../../components/BottomNavigation';
 
-// TypeScript navigation type
-type AnalysisResultScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'AnalysisResultScreen'
->;
-
-// Mock AI result (replace with your Python backend data later)
+// Analysis Result Type from IoT
 type AnalysisResult = {
-  main: { condition: string; confidence: number }; // 0-1
+  main: { condition: string; confidence: number };
   suggestedActions: string[];
   otherPossibilities: { condition: string; confidence: number }[];
-};
-
-const mockResult: AnalysisResult = {
-  main: { condition: 'Hungry', confidence: 0.92 },
-  suggestedActions: [
-    'Try feeding your baby',
-    'Check feeding schedule',
-    'Feed in a calm environment',
-  ],
-  otherPossibilities: [
-    { condition: 'Sleepy', confidence: 0.35 },
-    { condition: 'Discomfort', confidence: 0.2 },
-  ],
+  timestamp: Date;
+  duration: number;
+  confidence: number;
 };
 
 // Screen width for progress bar
@@ -57,45 +40,190 @@ const ProgressBar = ({ progress }: { progress: number }) => (
 );
 
 export default function AnalysisResultScreen() {
-  const navigation = useNavigation<AnalysisResultScreenNavigationProp>();
-  const result = mockResult; // Replace with actual data later
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const { colors, isDark } = useTheme();
+  
+  // Get analysis data from IoT or use mock
+  const result: AnalysisResult = params.analysisData 
+    ? JSON.parse(params.analysisData as string)
+    : {
+        main: { condition: 'Hungry', confidence: 0.92 },
+        suggestedActions: [
+          'Try feeding your baby',
+          'Check feeding schedule',
+          'Feed in a calm environment',
+        ],
+        otherPossibilities: [
+          { condition: 'Sleepy', confidence: 0.35 },
+          { condition: 'Discomfort', confidence: 0.2 },
+        ],
+        timestamp: new Date(),
+        duration: 15,
+        confidence: 92
+      };
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.sectionTitle}>Analysis Result</Text>
-      </View>
-
-      {/* Main Result Card */}
-      <View style={styles.card}>
-        <Ionicons name="restaurant" size={48} color="#FF6347" style={{ marginBottom: 12 }} />
-        <Text style={styles.cardTitle}>Baby is {result.main.condition}</Text>
-        <Text>Confidence: {(result.main.confidence * 100).toFixed(0)}%</Text>
-        <ProgressBar progress={result.main.confidence} />
-      </View>
-
-      {/* Suggested Actions */}
-      <Text style={styles.sectionTitle}>Suggested Actions</Text>
-      {result.suggestedActions.map((action, index) => (
-        <View key={index} style={styles.activityCard}>
-          <Text>{action}</Text>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 80 }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.text }}>Analysis Result</Text>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="close" size={28} color={colors.text} />
+          </TouchableOpacity>
         </View>
-      ))}
 
-      {/* Other Possibilities */}
-      <Text style={styles.sectionTitle}>Other Possibilities</Text>
-      {result.otherPossibilities.map((option, index) => (
-        <View key={index} style={styles.activityCard}>
-          <Text>{option.condition}</Text>
-          <Text>{(option.confidence * 100).toFixed(0)}%</Text>
+        {/* IoT Status */}
+        <View style={{ 
+          backgroundColor: isDark ? '#2a2a2a' : 'white', 
+          padding: 16, 
+          borderRadius: 12, 
+          marginBottom: 20, 
+          alignItems: 'center',
+          shadowColor: '#000', 
+          shadowOffset: { width: 0, height: 2 }, 
+          shadowOpacity: isDark ? 0.3 : 0.1, 
+          shadowRadius: 4, 
+          elevation: 3 
+        }}>
+          <Text style={{ fontSize: 14, color: '#4CAF50', fontWeight: '600', marginBottom: 4 }}>
+            🎯 IoT Analysis Complete
+          </Text>
+          <Text style={{ fontSize: 12, color: isDark ? '#999' : '#666' }}>
+            Real-time cry detection and analysis
+          </Text>
         </View>
-      ))}
 
-      {/* Return to Home Button */}
-      <TouchableOpacity style={styles.saveButton} onPress={() => navigation.navigate('HomeScreen')}>
-        <Text style={styles.saveButtonText}>Return to Home</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* Main Result Card */}
+        <View style={{ 
+          backgroundColor: isDark ? '#2a2a2a' : 'white', 
+          padding: 20, 
+          borderRadius: 12, 
+          marginBottom: 20, 
+          alignItems: 'center',
+          shadowColor: '#000', 
+          shadowOffset: { width: 0, height: 2 }, 
+          shadowOpacity: isDark ? 0.3 : 0.1, 
+          shadowRadius: 4, 
+          elevation: 3 
+        }}>
+          <Ionicons 
+            name={result.main.condition === 'Hungry' ? 'restaurant' : 
+                 result.main.condition === 'Sleepy' ? 'bed' : 
+                 'alert-circle'} 
+            size={48} 
+            color="#FF6347" 
+            style={{ marginBottom: 12 }} 
+          />
+          <Text style={{ fontSize: 20, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
+            Baby is {result.main.condition}
+          </Text>
+          <Text style={{ fontSize: 16, color: isDark ? '#999' : '#666', marginBottom: 12 }}>
+            Confidence: {(result.main.confidence * 100).toFixed(0)}%
+          </Text>
+          <ProgressBar progress={result.main.confidence} />
+        </View>
+
+        {/* Recording Details */}
+        <View style={{ 
+          backgroundColor: isDark ? '#2a2a2a' : 'white', 
+          padding: 16, 
+          borderRadius: 12, 
+          marginBottom: 20,
+          shadowColor: '#000', 
+          shadowOffset: { width: 0, height: 2 }, 
+          shadowOpacity: isDark ? 0.3 : 0.1, 
+          shadowRadius: 4, 
+          elevation: 3 
+        }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 12 }}>
+            Recording Details
+          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666', marginBottom: 4 }}>Duration</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{result.duration}s</Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666', marginBottom: 4 }}>Time</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
+                {new Date(result.timestamp).toLocaleTimeString()}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Suggested Actions */}
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>
+          Suggested Actions
+        </Text>
+        {result.suggestedActions.map((action, index) => (
+          <View 
+            key={index} 
+            style={{ 
+              backgroundColor: isDark ? '#2a2a2a' : 'white', 
+              padding: 16, 
+              borderRadius: 12, 
+              marginBottom: 12,
+              shadowColor: '#000', 
+              shadowOffset: { width: 0, height: 2 }, 
+              shadowOpacity: isDark ? 0.3 : 0.1, 
+              shadowRadius: 4, 
+              elevation: 3 
+            }}
+          >
+            <Text style={{ fontSize: 16, color: colors.text }}>{action}</Text>
+          </View>
+        ))}
+
+        {/* Other Possibilities */}
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>
+          Other Possibilities
+        </Text>
+        {result.otherPossibilities.map((option, index) => (
+          <View 
+            key={index} 
+            style={{ 
+              backgroundColor: isDark ? '#2a2a2a' : 'white', 
+              padding: 16, 
+              borderRadius: 12, 
+              marginBottom: 12,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              shadowColor: '#000', 
+              shadowOffset: { width: 0, height: 2 }, 
+              shadowOpacity: isDark ? 0.3 : 0.1, 
+              shadowRadius: 4, 
+              elevation: 3 
+            }}
+          >
+            <Text style={{ fontSize: 16, color: colors.text }}>{option.condition}</Text>
+            <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666' }}>
+              {(option.confidence * 100).toFixed(0)}%
+            </Text>
+          </View>
+        ))}
+
+        {/* Return to Home Button */}
+        <TouchableOpacity 
+          style={{ 
+            backgroundColor: '#60A5FA', 
+            padding: 16, 
+            borderRadius: 12, 
+            alignItems: 'center', 
+            marginTop: 20,
+            marginBottom: 20
+          }} 
+          onPress={() => router.push('/')}
+        >
+          <Text style={{ fontSize: 16, fontWeight: '600', color: 'white' }}>Return to Home</Text>
+        </TouchableOpacity>
+      </ScrollView>
+      
+      {/* Bottom Navigation */}
+      <BottomNavigation />
+    </View>
   );
 }

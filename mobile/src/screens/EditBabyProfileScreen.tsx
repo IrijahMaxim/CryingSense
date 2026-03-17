@@ -39,7 +39,7 @@ export default function EditBabyProfileScreen({ navigation }: any) {
           <Image source={{ uri: photo }} style={{ width: 100, height: 100, borderRadius: 50 }} />
         ) : (
           <Image
-            source={require('../../assets/baby_placeholder.png')}
+            source={require('../assets/baby_placeholder.png')}
             style={{ width: 100, height: 100, borderRadius: 50 }}
           />
         )}

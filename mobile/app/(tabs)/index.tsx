@@ -1,98 +1,151 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import React from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useBaby } from '../../src/context/BabyContext';
+import { useTheme } from '../../src/context/ThemeContext';
+import BottomNavigation from '../../components/BottomNavigation';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome Nicky the MacBook Girl!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { profile, getTodayEvents, getTopNeed, getTotalRecordings } = useBaby();
+  const { colors, isDark } = useTheme();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const todayEvents = getTodayEvents();
+  const topNeed = getTopNeed();
+  const totalRecordings = getTotalRecordings();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 80 }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.text }}>CryingSense</Text>
+          <TouchableOpacity onPress={() => router.push('/settings')}>
+            <Image 
+              source={require('../../assets/images/logo.png')} 
+              style={{ width: 32, height: 32 }}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Profile Section */}
+        <TouchableOpacity 
+          style={{ backgroundColor: isDark ? '#2a2a2a' : 'white', padding: 16, borderRadius: 12, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: isDark ? 0.3 : 0.1, shadowRadius: 4, elevation: 3 }}
+          onPress={() => router.push('/profile-details')}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {profile?.photo ? (
+              <Image
+                source={{ uri: profile.photo }}
+                style={{ width: 60, height: 60, borderRadius: 30, marginRight: 16 }}
+              />
+            ) : (
+              <Image
+                source={require('../../assets/baby_placeholder.png')}
+                style={{ width: 60, height: 60, borderRadius: 30, marginRight: 16 }}
+              />
+            )}
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 4 }}>{profile?.name || 'Baby'}</Text>
+              <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666' }}>{profile?.ageMonths || 0} months old</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Today's Insights Section */}
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>Today's Insights</Text>
+        
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+          <View style={{ 
+            backgroundColor: isDark ? '#2a2a2a' : 'white', 
+            padding: 20, 
+            borderRadius: 12, 
+            width: '48%', 
+            shadowColor: '#000', 
+            shadowOffset: { width: 0, height: 2 }, 
+            shadowOpacity: isDark ? 0.3 : 0.1, 
+            shadowRadius: 4, 
+            elevation: 3 
+          }}>
+            <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666', marginBottom: 8 }}>Total Recordings</Text>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.text }}>{totalRecordings}</Text>
+          </View>
+          
+          <View style={{ 
+            backgroundColor: isDark ? '#2a2a2a' : 'white', 
+            padding: 20, 
+            borderRadius: 12, 
+            width: '48%', 
+            shadowColor: '#000', 
+            shadowOffset: { width: 0, height: 2 }, 
+            shadowOpacity: isDark ? 0.3 : 0.1, 
+            shadowRadius: 4, 
+            elevation: 3 
+          }}>
+            <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666', marginBottom: 8 }}>Top Need</Text>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: '#60A5FA' }}>{topNeed}</Text>
+          </View>
+        </View>
+
+        {/* Recent Activity Section */}
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>Recent Activity</Text>
+        
+        <View style={{ 
+          backgroundColor: isDark ? '#2a2a2a' : 'white', 
+          padding: 20, 
+          borderRadius: 12, 
+          marginBottom: 20, 
+          shadowColor: '#000', 
+          shadowOffset: { width: 0, height: 2 }, 
+          shadowOpacity: isDark ? 0.3 : 0.1, 
+          shadowRadius: 4, 
+          elevation: 3 
+        }}>
+          {todayEvents.length > 0 ? (
+            todayEvents.slice(0, 3).map((event, index) => (
+              <View 
+                key={event.id}
+                style={{ 
+                  backgroundColor: isDark ? '#333' : '#f5f5f5', 
+                  padding: 16, 
+                  borderRadius: 8, 
+                  marginBottom: index < todayEvents.slice(0, 3).length - 1 ? 12 : 0, 
+                  borderWidth: 1, 
+                  borderColor: isDark ? '#555' : '#e0e0e0'
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 }}>{event.need}</Text>
+                    <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666' }}>
+                      {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <View style={{ 
+                    backgroundColor: '#4CAF50', 
+                    paddingHorizontal: 8, 
+                    paddingVertical: 4, 
+                    borderRadius: 12 
+                  }}>
+                    <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>Analyzed</Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={{ alignItems: 'center', padding: 20 }}>
+              <Ionicons name="time-outline" size={32} color={isDark ? '#666' : '#ccc'} style={{ marginBottom: 8 }} />
+              <Text style={{ fontSize: 14, color: isDark ? '#999' : '#666', textAlign: 'center' }}>
+                No recordings today
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+      
+      {/* Bottom Navigation */}
+      <BottomNavigation />
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});

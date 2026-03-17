@@ -9,7 +9,7 @@ import { BabyProvider } from './src/context/BabyContext';
 export type RootStackParamList = {
   MainTabs: undefined;
   AnalysisResultScreen: undefined;
-  EditBabyProfileScreen: undefined; // Add this here
+  EditBabyProfileScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();

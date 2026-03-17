@@ -175,4 +175,16 @@ export default StyleSheet.create({
     fontSize: 14,
     color: '#999',
   },
+
+  // ========================
+  // Edit Baby Profile Screen
+  // ========================
+  avatarCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    backgroundColor: '#f9f9f9',
+  },
 });
