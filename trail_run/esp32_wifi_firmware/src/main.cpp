@@ -30,15 +30,9 @@
 // =============================================================================
 // WIFI CONFIGURATION
 // =============================================================================
-<<<<<<< HEAD
-const char* WIFI_SSID = "ROTC";
-const char* WIFI_PASSWORD = "03179673";
-const char* SERVER_IP = "10.255.6.71";   // Backend server host (same LAN)
-=======
-const char* WIFI_SSID = "PLDTHOMEFIBRE538D";
-const char* WIFI_PASSWORD = "PLDTWIFI88IEC";
-const char* SERVER_IP = "192.168.1.4";   // Backend server host (same LAN)
->>>>>>> 526e59d9882189bd621e794fa3f75658b329c924
+const char* WIFI_SSID = "Irijah vivo V50";
+const char* WIFI_PASSWORD = "aaaaaaaa";
+const char* SERVER_IP = "10.181.103.242";   // Backend server host (same LAN)
 const int SERVER_PORT = 8888;             // Backend UDP ingest port
 
 #define SERIAL_BAUD_RATE 115200
@@ -68,13 +62,18 @@ const int SERVER_PORT = 8888;             // Backend UDP ingest port
 // =============================================================================
 // LED CONFIGURATION
 // =============================================================================
-#define BLUE_LED 4   // System / WiFi indicator
-#define RED_LED 5    // Cry detection indicator
+#define LED_PIN 2
+#define LED_PWM_CHANNEL 0
+#define LED_PWM_FREQ 5000
+#define LED_PWM_RESOLUTION 8
+#define LED_CONNECTED_IDLE_BRIGHTNESS 16
+#define LED_OFFLINE_BLINK_BRIGHTNESS 120
+#define LED_OFFLINE_BLINK_INTERVAL_MS 300
 
 // =============================================================================
 // AUDIO PROCESSING
 // =============================================================================
-#define SOFTWARE_GAIN 1.5              // Amplification factor (increase if needed)
+#define SOFTWARE_GAIN 1.0              // Amplification factor (increase if needed)
 
 // Baby Crying Detection thresholds
 #define AMBIENT_THRESHOLD 30.0         // Normal room noise level
@@ -105,6 +104,8 @@ unsigned long lastWiFiCheck = 0;
 const unsigned long WIFI_RETRY_INTERVAL = 10000;
 uint32_t udpSendFailures = 0;
 uint32_t serialFallbackPackets = 0;
+bool ledOfflineBlinkState = false;
+unsigned long lastLedBlinkToggle = 0;
 
 int16_t sBuffer[BUFFER_SIZE];
 uint8_t txBuffer[HEADER_SIZE + BUFFER_SIZE * 2];  // Header + 16-bit samples
@@ -132,14 +133,10 @@ void setup() {
 #endif
     
     // Setup LED
-    pinMode(BLUE_LED, OUTPUT);
-    pinMode(RED_LED, OUTPUT);
-
-    digitalWrite(BLUE_LED, LOW);
-    digitalWrite(RED_LED, LOW);
-
+    ledcSetup(LED_PWM_CHANNEL, LED_PWM_FREQ, LED_PWM_RESOLUTION);
+    ledcAttachPin(LED_PIN, LED_PWM_CHANNEL);
+    ledcWrite(LED_PWM_CHANNEL, 0);
     bootLedSelfTest();
-
 #if ENABLE_SERIAL_DEBUG_LOGS
     Serial.println("LED configured");
 #endif
@@ -259,22 +256,25 @@ void loop() {
     
     int amplitude = valid_samples > 0 ? sum_abs / valid_samples : 0;
     
-    // ============================
-    // LED STATUS SYSTEM
-    // ============================
-
-    // WiFi Status LED (Blue)
-    if (WiFi.status() == WL_CONNECTED) {
-        digitalWrite(BLUE_LED, HIGH);
-    } else {
-        digitalWrite(BLUE_LED, millis() % 600 < 300); // blinking when offline
+    // Update LED behavior so status is visible even without serial monitor.
+    int brightness = 0;
+    if (amplitude > AMBIENT_THRESHOLD) {
+        brightness = (int)((amplitude / MAX_AMPLITUDE) * 255.0);
+        brightness = constrain(brightness, 0, 255);
     }
 
-    // Cry Detection LED (Red)
-    if (loudCount >= DETECTION_COUNT) {
-        digitalWrite(RED_LED, HIGH);
+    if (WiFi.status() == WL_CONNECTED) {
+        if (brightness < LED_CONNECTED_IDLE_BRIGHTNESS) {
+            brightness = LED_CONNECTED_IDLE_BRIGHTNESS;
+        }
+        ledcWrite(LED_PWM_CHANNEL, brightness);
     } else {
-        digitalWrite(RED_LED, LOW);
+        unsigned long now = millis();
+        if (now - lastLedBlinkToggle >= LED_OFFLINE_BLINK_INTERVAL_MS) {
+            ledOfflineBlinkState = !ledOfflineBlinkState;
+            lastLedBlinkToggle = now;
+        }
+        ledcWrite(LED_PWM_CHANNEL, ledOfflineBlinkState ? LED_OFFLINE_BLINK_BRIGHTNESS : 0);
     }
     
     // Baby cry detection with sustained sound check
@@ -328,6 +328,8 @@ void loop() {
         Serial.print(amplitude);
         Serial.print(" | Peak: ");
         Serial.print(peak);
+        Serial.print(" | LED: ");
+        Serial.print(brightness);
         Serial.print(" | Packets: ");
         Serial.print(packetId);
         Serial.print(" | Status: ");
@@ -391,7 +393,7 @@ void connectWiFi() {
         attempts++;
         
         // Blink LED while connecting
-        digitalWrite(BLUE_LED, attempts % 2);
+        ledcWrite(LED_PWM_CHANNEL, (attempts % 2) ? 128 : 0);
     }
     
     if (WiFi.status() == WL_CONNECTED) {
@@ -405,24 +407,22 @@ void connectWiFi() {
         Serial.print("MAC Address: ");
         Serial.println(WiFi.macAddress());
 #endif
-        digitalWrite(BLUE_LED, LOW);
+        ledcWrite(LED_PWM_CHANNEL, 0);
     } else {
 #if ENABLE_SERIAL_DEBUG_LOGS
         Serial.println(" Failed!");
         Serial.println("Continuing in offline mode - using serial fallback if enabled");
         Serial.println("Will retry WiFi connection in loop...");
 #endif
-        digitalWrite(BLUE_LED, LOW);
+        ledcWrite(LED_PWM_CHANNEL, 0);
     }
 }
 
 void bootLedSelfTest() {
     for (int i = 0; i < 3; i++) {
-        digitalWrite(BLUE_LED, HIGH);
-        digitalWrite(RED_LED, HIGH);
+        ledcWrite(LED_PWM_CHANNEL, 180);
         delay(120);
-        digitalWrite(BLUE_LED, LOW);
-        digitalWrite(RED_LED, LOW);
+        ledcWrite(LED_PWM_CHANNEL, 0);
         delay(120);
     }
 }
