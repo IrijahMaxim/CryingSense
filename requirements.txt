@@ -1,0 +1,46 @@
+# CryingSense consolidated requirements (recommended for Python 3.12)
+# Note: PyTorch often requires installing platform-specific wheels via the
+# official instructions at https://pytorch.org/. If you want a CPU-only
+# install, see QUICK_START.md for the recommended command.
+
+# Core numerical & ML
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# PyTorch (install via official wheel for CUDA support if needed)
+# Put a placeholder here — prefer installing via the command in QUICK_START.md
+torch>=2.6.0
+torchaudio>=2.6.0
+
+# Audio processing
+librosa>=0.10.0
+noisereduce>=2.0.0
+pyaudio>=0.2.13
+sounddevice>=0.4.5
+soundfile>=0.12.1
+audioread>=3.0.0
+
+# Data + DB
+pymongo>=4.6.0
+dnspython>=2.2.0
+
+# Utilities
+tqdm>=4.65.0
+joblib>=1.3.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+PyQt5>=5.15.7
+pyqtgraph>=0.13.0
+pygame>=2.1.0
+
+# Model export/runtime
+onnx>=1.14.0
+onnxruntime>=1.16.0
+
+# Serial / IoT
+pyserial>=3.5

@@ -10,15 +10,30 @@ This script removes all files from:
 Use this before regenerating processed data and visualizations.
 
 Usage:
-    python cleanup_dataset.py [--confirm]
+    python cleanup_dataset.py [--confirm] [--targets TARGET1 TARGET2 ...]
     
 Options:
     --confirm    Skip confirmation prompt and delete immediately
+    --targets    Specific targets to clean: viz, cleaned, features, legacy, or all (default: all)
+    
+Examples:
+    # Clean only the three folders
+       python cleanup_dataset.py --targets viz cleaned features
+
+    # Clean only visualizations
+        python cleanup_dataset.py --targets viz
+
+    # Clean only one specific folder
+        python cleanup_dataset.py --targets cleaned
+
+    # Clean everything (default behavior)
+        python cleanup_dataset.py
 """
 
 import os
 import shutil
 import sys
+import argparse
 from pathlib import Path
 
 
@@ -86,18 +101,69 @@ def cleanup_folder(folder_path, folder_description):
 
 def main():
     """Main cleanup function."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Clean CryingSense dataset processed files',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('--confirm', action='store_true',
+                       help='Skip confirmation prompt and delete immediately')
+    parser.add_argument('--targets', nargs='+', 
+                       choices=['viz', 'cleaned', 'features', 'legacy', 'all'],
+                       default=['all'],
+                       help='Specific targets to clean (default: all)')
+    
+    args = parser.parse_args()
+    
+    # Determine which folders to clean
+    targets = set(args.targets)
+    if 'all' in targets:
+        clean_viz = clean_cleaned = clean_features = clean_legacy = True
+    else:
+        clean_viz = 'viz' in targets
+        clean_cleaned = 'cleaned' in targets
+        clean_features = 'features' in targets
+        clean_legacy = 'legacy' in targets
+    
     # Get project root
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     
     # Define folders to clean
-    visualizations_dir = os.path.join(project_root, "dataset", "visualizations")
-    cleaned_dir = os.path.join(project_root, "dataset", "processed", "cleaned")
-    features_dir = os.path.join(project_root, "dataset", "processed", "features")
-    legacy_features_dir = os.path.join(project_root, "dataset", "processed", "feature_extraction")
+    folders_to_clean = []
     
-    # Check for --confirm flag
-    auto_confirm = "--confirm" in sys.argv
+    if clean_viz:
+        folders_to_clean.append({
+            'path': os.path.join(project_root, "dataset", "visualizations"),
+            'description': 'Visualizations',
+            'label': '1'
+        })
+    
+    if clean_cleaned:
+        folders_to_clean.append({
+            'path': os.path.join(project_root, "dataset", "processed", "cleaned"),
+            'description': 'Cleaned Audio',
+            'label': '2'
+        })
+    
+    if clean_features:
+        folders_to_clean.append({
+            'path': os.path.join(project_root, "dataset", "processed", "features"),
+            'description': 'Feature Files (.npy)',
+            'label': '3'
+        })
+    
+    if clean_legacy:
+        folders_to_clean.append({
+            'path': os.path.join(project_root, "dataset", "processed", "feature_extraction"),
+            'description': 'Legacy Feature Files',
+            'label': '4'
+        })
+    
+    # Auto-confirm flag (for backward compatibility)
+    auto_confirm = args.confirm or "--confirm" in sys.argv
+    # Auto-confirm flag (for backward compatibility)
+    auto_confirm = args.confirm or "--confirm" in sys.argv
     
     print("=" * 70)
     print("CryingSense Dataset Cleanup")
@@ -108,39 +174,26 @@ def main():
     print("The following folders will be cleaned:")
     print()
     
-    viz_count = count_files(visualizations_dir)
-    viz_size = get_folder_size(visualizations_dir)
-    print(f"1. Visualizations: {visualizations_dir}")
-    print(f"   Files: {viz_count} ({format_size(viz_size)})")
-    print()
+    total_count = 0
+    total_size = 0
     
-    cleaned_count = count_files(cleaned_dir)
-    cleaned_size = get_folder_size(cleaned_dir)
-    print(f"2. Cleaned Audio: {cleaned_dir}")
-    print(f"   Files: {cleaned_count} ({format_size(cleaned_size)})")
-    print()
-    
-    features_count = count_files(features_dir)
-    features_size = get_folder_size(features_dir)
-    print(f"3. Feature Files (.npy): {features_dir}")
-    print(f"   Files: {features_count} ({format_size(features_size)})")
-    print()
-    
-    legacy_features_count = count_files(legacy_features_dir)
-    legacy_features_size = get_folder_size(legacy_features_dir)
-    if legacy_features_count > 0:
-        print(f"4. Legacy Feature Files: {legacy_features_dir}")
-        print(f"   Files: {legacy_features_count} ({format_size(legacy_features_size)})")
+    for i, folder_info in enumerate(folders_to_clean, 1):
+        folder_path = folder_info['path']
+        file_count = count_files(folder_path)
+        folder_size = get_folder_size(folder_path)
+        
+        print(f"{i}. {folder_info['description']}: {folder_path}")
+        print(f"   Files: {file_count} ({format_size(folder_size)})")
         print()
-    
-    total_count = viz_count + cleaned_count + features_count + legacy_features_count
-    total_size = viz_size + cleaned_size + features_size + legacy_features_size
+        
+        total_count += file_count
+        total_size += folder_size
     
     print(f"Total: {total_count} files ({format_size(total_size)})")
     print("=" * 70)
     
     if total_count == 0:
-        print("\n✓ All folders are already empty. Nothing to clean!")
+        print("\n✓ All selected folders are already empty. Nothing to clean!")
         return
     
     # Confirmation
@@ -159,21 +212,13 @@ def main():
     total_deleted_files = 0
     total_deleted_size = 0
     
-    deleted_files, deleted_size = cleanup_folder(visualizations_dir, "Visualizations folder")
-    total_deleted_files += deleted_files
-    total_deleted_size += deleted_size
-    
-    deleted_files, deleted_size = cleanup_folder(cleaned_dir, "Cleaned audio folder")
-    total_deleted_files += deleted_files
-    total_deleted_size += deleted_size
-    
-    deleted_files, deleted_size = cleanup_folder(features_dir, "Feature files folder")
-    total_deleted_files += deleted_files
-    total_deleted_size += deleted_size
-    
-    deleted_files, deleted_size = cleanup_folder(legacy_features_dir, "Legacy feature files folder")
-    total_deleted_files += deleted_files
-    total_deleted_size += deleted_size
+    for folder_info in folders_to_clean:
+        deleted_files, deleted_size = cleanup_folder(
+            folder_info['path'], 
+            f"{folder_info['description']} folder"
+        )
+        total_deleted_files += deleted_files
+        total_deleted_size += deleted_size
     
     print()
     print("=" * 70)
@@ -182,13 +227,20 @@ def main():
     print(f"Total files removed: {total_deleted_files}")
     print(f"Total space freed: {format_size(total_deleted_size)}")
     print()
-    print("✓ Folders are now clean and ready for regeneration!")
+    print("✓ Selected folders are now clean and ready for regeneration!")
     print()
-    print("Next steps:")
-    print("  1. Run: python preprocess_audio.py")
-    print("  2. Run: python feature_extraction.py")
-    print("  3. Run: python visualize_dataset.py  (optional)")
-    print("  4. Run: python dataset_split.py")
+    
+    # Show relevant next steps based on what was cleaned
+    if clean_cleaned or clean_features or 'all' in targets:
+        print("Next steps:")
+        if clean_cleaned:
+            print("  1. Run: python preprocess_audio.py")
+        if clean_features:
+            print("  2. Run: python feature_extraction.py")
+        if clean_viz:
+            print("  3. Run: python visualize_dataset.py  (optional)")
+        print("  4. Run: python dataset_split.py")
+    
     print("=" * 70)
 
 

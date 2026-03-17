@@ -18,10 +18,14 @@ Visualization Types:
      - Summary reports
 
 Usage:
-  python visualize_dataset.py                    # Visualize sample files from each category
-  python visualize_dataset.py --all              # Visualize ALL audio files (slow!)
-  python visualize_dataset.py --stats-only       # Generate only dataset statistics
-  python visualize_dataset.py --samples 5        # Visualize 5 random samples per category
+  python visualize_dataset.py                           # Visualize sample files from each category (cleaned)
+  python visualize_dataset.py --all                     # Visualize ALL audio files (slow!)
+  python visualize_dataset.py --dataset raw --all       # Visualize ALL files in raw dataset
+  python visualize_dataset.py --stats-only              # Generate only dataset statistics
+  python visualize_dataset.py --samples 5               # Visualize 5 random samples per category
+  python visualize_dataset.py --dataset raw             # Visualize only raw dataset
+  python visualize_dataset.py --dataset both            # Visualize both cleaned and raw datasets
+  python visualize_dataset.py --exclude burp tired      # Visualize skipping of specific categories
 
 Saves visualizations to: dataset/visualizations/
 """
@@ -42,17 +46,19 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def collect_dataset_stats(input_dir, sr=16000):
+def collect_dataset_stats(input_dir, sr=16000, exclude=None):
     """
     Collect statistics about the dataset.
     
     Args:
         input_dir: Directory containing audio files
         sr: Sample rate
+        exclude: Set of category names to skip
         
     Returns:
         dict: Statistics about files, durations, and categories
     """
+    exclude = {c.lower() for c in exclude} if exclude else set()
     stats = {
         'categories': defaultdict(lambda: {'count': 0, 'durations': []}),
         'total_files': 0,
@@ -66,6 +72,10 @@ def collect_dataset_stats(input_dir, sr=16000):
         wav_files = [f for f in files if f.endswith('.wav')]
         
         if not wav_files:
+            continue
+        
+        if category.lower() in exclude:
+            print(f"  Skipping excluded category: {category}")
             continue
             
         for file in tqdm(wav_files, desc=f"Analyzing {category}"):
@@ -255,23 +265,29 @@ def visualize_audio(audio_path, output_dir, sr=16000):
         return False
 
 
-def select_samples(input_dir, samples_per_category=3):
+def select_samples(input_dir, samples_per_category=3, exclude=None):
     """
     Select random samples from each category.
     
     Args:
         input_dir: Root directory containing audio files
         samples_per_category: Number of samples to select per category
+        exclude: Set of category names to skip
         
     Returns:
         list: List of selected file paths
     """
+    exclude = {c.lower() for c in exclude} if exclude else set()
     samples = []
     
     for root, _, files in os.walk(input_dir):
+        category = os.path.basename(root)
         wav_files = [os.path.join(root, f) for f in files if f.endswith('.wav')]
         
         if not wav_files:
+            continue
+        
+        if category.lower() in exclude:
             continue
             
         # Randomly select samples
@@ -282,7 +298,7 @@ def select_samples(input_dir, samples_per_category=3):
     return samples
 
 
-def visualize_dataset(input_dir, output_dir, sr=160000, all_files=False, samples_per_category=3):
+def visualize_dataset(input_dir, output_dir, sr=160000, all_files=False, samples_per_category=3, exclude=None):
     """
     Visualize audio files in the dataset.
     
@@ -292,10 +308,12 @@ def visualize_dataset(input_dir, output_dir, sr=160000, all_files=False, samples
         sr: Sample rate (default: 16000)
         all_files: If True, visualize all files; if False, sample files
         samples_per_category: Number of samples per category (if not all_files)
+        exclude: Set of category names to skip
     
     Returns:
         dict: Statistics about the visualization process
     """
+    exclude = {c.lower() for c in exclude} if exclude else set()
     stats = {
         'total_files': 0,
         'visualized_files': 0,
@@ -307,10 +325,13 @@ def visualize_dataset(input_dir, output_dir, sr=160000, all_files=False, samples
         print("\n⚠️  Visualizing ALL audio files (this may take a while)...")
         files_to_visualize = []
         for root, _, files in os.walk(input_dir):
+            category = os.path.basename(root)
+            if category.lower() in exclude:
+                continue
             files_to_visualize.extend([os.path.join(root, f) for f in files if f.endswith('.wav')])
     else:
         print(f"\nSelecting {samples_per_category} random samples per category...")
-        files_to_visualize = select_samples(input_dir, samples_per_category)
+        files_to_visualize = select_samples(input_dir, samples_per_category, exclude=exclude)
     
     print(f"Total files to visualize: {len(files_to_visualize)}\n")
     
@@ -334,55 +355,16 @@ def visualize_dataset(input_dir, output_dir, sr=160000, all_files=False, samples
     return stats
 
 
-def main():
-    """Main function to run visualization pipeline."""
-    parser = argparse.ArgumentParser(
-        description='Visualize CryingSense audio dataset',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Visualize 3 random samples per category (default)
-  python visualize_dataset.py
-  
-  # Visualize all audio files
-  python visualize_dataset.py --all
-  
-  # Visualize 5 random samples per category
-  python visualize_dataset.py --samples 5
-  
-  # Generate only dataset statistics
-  python visualize_dataset.py --stats-only
-  
-  # Use raw audio instead of cleaned
-  python visualize_dataset.py --raw
-        """
-    )
+def process_dataset(input_dir, output_dir, dataset_name, args):
+    """
+    Process visualizations for a single dataset.
     
-    parser.add_argument('--all', action='store_true',
-                       help='Visualize ALL audio files (slow!)')
-    parser.add_argument('--samples', type=int, default=3,
-                       help='Number of samples per category (default: 3)')
-    parser.add_argument('--stats-only', action='store_true',
-                       help='Generate only dataset statistics')
-    parser.add_argument('--raw', action='store_true',
-                       help='Use raw audio instead of cleaned')
-    
-    args = parser.parse_args()
-    
-    # Get paths relative to script location
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    
-    # Define directories
-    if args.raw:
-        input_dir = os.path.join(project_root, "dataset", "raw")
-        output_dir = os.path.join(project_root, "dataset", "visualizations", "raw")
-        dataset_name = "RAW"
-    else:
-        input_dir = os.path.join(project_root, "dataset", "processed", "cleaned")
-        output_dir = os.path.join(project_root, "dataset", "visualizations", "cleaned")
-        dataset_name = "CLEANED"
-    
+    Args:
+        input_dir: Input directory containing audio files
+        output_dir: Output directory for visualizations
+        dataset_name: Name of the dataset (e.g., "RAW" or "CLEANED")
+        args: Parsed command line arguments
+    """
     print("=" * 70)
     print(f"CryingSense Audio Visualization - {dataset_name}")
     print("=" * 70)
@@ -393,13 +375,17 @@ Examples:
     # Check if input directory exists
     if not os.path.exists(input_dir):
         print(f"\n❌ Error: Input directory does not exist: {input_dir}")
-        if not args.raw:
+        if dataset_name == "CLEANED":
             print("\nPlease run preprocessing first:")
             print("  python preprocess_audio.py")
-        sys.exit(1)
+        return False
+    
+    # Report excluded categories
+    if args.exclude:
+        print(f"Excluding categories: {', '.join(args.exclude)}")
     
     # Collect and visualize statistics
-    stats_data = collect_dataset_stats(input_dir)
+    stats_data = collect_dataset_stats(input_dir, exclude=args.exclude)
     plot_dataset_statistics(stats_data, output_dir)
     
     # Visualize audio files (unless stats-only mode)
@@ -414,7 +400,8 @@ Examples:
         
         viz_stats = visualize_dataset(input_dir, output_dir, 
                                       all_files=args.all, 
-                                      samples_per_category=args.samples)
+                                      samples_per_category=args.samples,
+                                      exclude=args.exclude)
         
         print()
         print("=" * 70)
@@ -435,6 +422,115 @@ Examples:
             print(f"✓ Visualizations saved to: {output_dir}")
     
     print("=" * 70)
+    return True
+
+
+def main():
+    """Main function to run visualization pipeline."""
+    parser = argparse.ArgumentParser(
+        description='Visualize CryingSense audio dataset',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Visualize 3 random samples per category (default, cleaned dataset)
+  python visualize_dataset.py
+  
+  # Visualize ALL audio files in cleaned dataset
+  python visualize_dataset.py --all
+  
+  # Visualize ALL audio files in raw dataset
+  python visualize_dataset.py --dataset raw --all
+  
+  # Visualize ALL audio files in both datasets
+  python visualize_dataset.py --dataset both --all
+  
+  # Visualize 5 random samples per category
+  python visualize_dataset.py --samples 5
+  
+  # Generate only dataset statistics (no individual file visualizations)
+  python visualize_dataset.py --stats-only
+  
+  # Visualize samples from raw audio dataset
+  python visualize_dataset.py --dataset raw
+  
+  # Visualize samples from both cleaned and raw datasets
+  python visualize_dataset.py --dataset both
+  
+  # Exclude specific categories
+  python visualize_dataset.py --exclude burp tired noise
+  python visualize_dataset.py --dataset raw --all --exclude noise speech
+        """
+    )
+    
+    parser.add_argument('--all', action='store_true',
+                       help='Visualize ALL audio files (slow!)')
+    parser.add_argument('--samples', type=int, default=3,
+                       help='Number of samples per category (default: 3)')
+    parser.add_argument('--stats-only', action='store_true',
+                       help='Generate only dataset statistics')
+    parser.add_argument('--dataset', type=str, default='cleaned',
+                       choices=['cleaned', 'raw', 'both'],
+                       help='Dataset to visualize: cleaned, raw, or both (default: cleaned)')
+    parser.add_argument('--exclude', nargs='+', default=[],
+                       metavar='CATEGORY',
+                       help='Categories to exclude (e.g. --exclude burp tired noise)')
+    
+    args = parser.parse_args()
+    
+    # Get paths relative to script location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    
+    # Determine which datasets to process
+    datasets_to_process = []
+    
+    if args.dataset == 'both':
+        datasets_to_process = [
+            {
+                'input_dir': os.path.join(project_root, "dataset", "processed", "cleaned"),
+                'output_dir': os.path.join(project_root, "dataset", "visualizations", "cleaned"),
+                'name': 'CLEANED'
+            },
+            {
+                'input_dir': os.path.join(project_root, "dataset", "raw"),
+                'output_dir': os.path.join(project_root, "dataset", "visualizations", "raw"),
+                'name': 'RAW'
+            }
+        ]
+    elif args.dataset == 'raw':
+        datasets_to_process = [
+            {
+                'input_dir': os.path.join(project_root, "dataset", "raw"),
+                'output_dir': os.path.join(project_root, "dataset", "visualizations", "raw"),
+                'name': 'RAW'
+            }
+        ]
+    else:  # cleaned
+        datasets_to_process = [
+            {
+                'input_dir': os.path.join(project_root, "dataset", "processed", "cleaned"),
+                'output_dir': os.path.join(project_root, "dataset", "visualizations", "cleaned"),
+                'name': 'CLEANED'
+            }
+        ]
+    
+    # Process each dataset
+    success_count = 0
+    for dataset_info in datasets_to_process:
+        if process_dataset(dataset_info['input_dir'], 
+                          dataset_info['output_dir'], 
+                          dataset_info['name'], 
+                          args):
+            success_count += 1
+        
+        # Add spacing between datasets if processing multiple
+        if len(datasets_to_process) > 1 and dataset_info != datasets_to_process[-1]:
+            print("\n" * 2)
+    
+    # Exit with appropriate code
+    if success_count == 0:
+        sys.exit(1)
+    
     sys.exit(0)
 
 

@@ -4,41 +4,60 @@ This guide will help you get the CryingSense baby cry classification system up a
 
 ## Prerequisites
 
-- Python 3.8 or higher
-- PyTorch 2.6.0+
+- Python 3.12 (recommended)
 - Audio input device (microphone)
 
 ## Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/IrijahMaxim/CryingSense.git
-   cd CryingSense
-   ```
+  ```bash
+  git clone https://github.com/IrijahMaxim/CryingSense.git
+  cd CryingSense
+  ```
 
-2. **Install dependencies**
-   ```bash
-   pip install -r model/requirements.txt
-   ```
+2. **Create and activate a Python 3.12 virtual environment**
+  ```bash
+  python3.12 -m venv .venv
+  # Windows (PowerShell)
+  .\.venv\Scripts\Activate.ps1
+  # or Windows (cmd)
+  .\.venv\Scripts\activate.bat
+  # macOS / Linux
+  source .venv/bin/activate
+  pip install --upgrade pip
+  ```
 
-3. **Install audio dependencies** (for microphone recording)
-   
-   **Linux:**
-   ```bash
-   sudo apt-get install portaudio19-dev
-   pip install pyaudio
-   ```
-   
-   **macOS:**
-   ```bash
-   brew install portaudio
-   pip install pyaudio
-   ```
-   
-   **Windows:**
-   ```bash
-   pip install pyaudio
-   ```
+3. **Install PyTorch (platform specific)**
+
+  PyTorch wheels are platform- and CUDA-version dependent. Visit
+  https://pytorch.org/get-started/locally, choose your OS and compute
+  configuration and run the recommended `pip` command before the next
+  step. For CPU-only installs the website will provide the appropriate
+  command.
+
+4. **Install the project dependencies**
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+5. **Install system audio libraries (if needed for `pyaudio`)**
+
+  **Linux:**
+  ```bash
+  sudo apt-get install portaudio19-dev
+  pip install pyaudio
+  ```
+
+  **macOS:**
+  ```bash
+  brew install portaudio
+  pip install pyaudio
+  ```
+
+  **Windows:**
+  ```bash
+  pip install pyaudio
+  ```
 
 ## Step-by-Step Workflow
 

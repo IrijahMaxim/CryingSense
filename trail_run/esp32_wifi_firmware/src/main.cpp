@@ -30,9 +30,9 @@
 // =============================================================================
 // WIFI CONFIGURATION
 // =============================================================================
-const char* WIFI_SSID = "PLDTHOMEFIBRE538D";
-const char* WIFI_PASSWORD = "PLDTWIFI88IEC";
-const char* SERVER_IP = "192.168.1.9";   // Backend server host (same LAN)
+const char* WIFI_SSID = "ROTC";
+const char* WIFI_PASSWORD = "03179673";
+const char* SERVER_IP = "10.255.6.71";   // Backend server host (same LAN)
 const int SERVER_PORT = 8888;             // Backend UDP ingest port
 
 #define SERIAL_BAUD_RATE 115200
@@ -479,7 +479,7 @@ void i2s_install() {
         .mode = i2s_mode_t(I2S_MODE_MASTER | I2S_MODE_RX),
         .sample_rate = SAMPLE_RATE,
         .bits_per_sample = i2s_bits_per_sample_t(32),
-        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
         .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S),
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = 4,

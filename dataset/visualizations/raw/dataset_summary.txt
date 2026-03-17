@@ -1,0 +1,43 @@
+Dataset Summary
+========================================
+
+Total Files: 901
+Total Duration: 6106.48 seconds (101.77 minutes)
+
+Per Category:
+----------------------------------------
+
+BELLY_PAIN:
+  Files: 127
+  Total Duration: 804.00s
+  Avg Duration: 6.33s
+  Min Duration: 5.00s
+  Max Duration: 7.04s
+
+BURP:
+  Files: 118
+  Total Duration: 761.42s
+  Avg Duration: 6.45s
+  Min Duration: 5.00s
+  Max Duration: 8.63s
+
+DISCOMFORT:
+  Files: 138
+  Total Duration: 955.96s
+  Avg Duration: 6.93s
+  Min Duration: 6.62s
+  Max Duration: 7.06s
+
+HUNGER:
+  Files: 382
+  Total Duration: 2642.68s
+  Avg Duration: 6.92s
+  Min Duration: 6.52s
+  Max Duration: 7.06s
+
+TIRED:
+  Files: 136
+  Total Duration: 942.42s
+  Avg Duration: 6.93s
+  Min Duration: 6.52s
+  Max Duration: 7.06s
