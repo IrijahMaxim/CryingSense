@@ -40,6 +40,7 @@ from config import (
     DURATION,
     PREDICTION_INTERVAL,
     LISTEN_CHUNK,
+    MIC_DEVICE_INDEX,
     RECORDINGS_DIR,
     DEVICE_ID,
     LOG_LEVEL,
@@ -86,6 +87,7 @@ def _capture_chunk(pa_instance, duration: float, path: str):
         channels=CHANNELS,
         rate=SAMPLE_RATE,
         input=True,
+        input_device_index=MIC_DEVICE_INDEX,
         frames_per_buffer=LISTEN_CHUNK,
     )
     frames = []
@@ -139,6 +141,7 @@ class CryingSensePipeline:
         # App communication
         self.notifier = AppNotifier(self.device_id, self.session_id)
         self.recorder = RecordingTrigger(self.process_file)
+        self.notifier.set_recording_trigger(self.recorder)
         await self.notifier.start()
 
         # Start HTTP /record endpoint alongside existing HTTP server

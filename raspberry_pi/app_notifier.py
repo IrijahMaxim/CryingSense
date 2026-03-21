@@ -56,6 +56,11 @@ class AppNotifier:
         self.session_id = session_id
         self._server = None
         self._http_runner = None
+        self._recording_trigger = None  # set via set_recording_trigger()
+
+    def set_recording_trigger(self, trigger):
+        """Wire in the RecordingTrigger so WS messages can be routed."""
+        self._recording_trigger = trigger
 
     # ── WebSocket handler ────────────────────────────────────────────────
 
@@ -65,8 +70,10 @@ class AppNotifier:
         log.info("WS client connected  [%s]", remote)
         try:
             async for msg in ws:
-                # Android → RPi messages handled by RecordingTrigger
-                pass
+                if self._recording_trigger is not None:
+                    result = await self._recording_trigger.handle_ws_message(msg)
+                    if result is not None:
+                        await self._safe_send(ws, json.dumps(result))
         finally:
             _clients.discard(ws)
             log.info("WS client disconnected  [%s]", remote)

@@ -18,7 +18,6 @@ import asyncio
 import json
 import wave
 import logging
-import struct
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +28,7 @@ from config import (
     MAX_RECORDING_SECONDS,
     RECORDINGS_DIR,
     LISTEN_CHUNK,
+    MIC_DEVICE_INDEX,
     APP_API_HOST,
     APP_API_PORT,
 )
@@ -126,6 +126,7 @@ class RecordingTrigger:
                 channels=CHANNELS,
                 rate=SAMPLE_RATE,
                 input=True,
+                input_device_index=MIC_DEVICE_INDEX,
                 frames_per_buffer=LISTEN_CHUNK,
             )
             frames = []
