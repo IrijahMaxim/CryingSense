@@ -3,13 +3,13 @@ CryingSense Model - Validation Classification Report
 
               precision    recall  f1-score   support
 
-  belly_pain       0.75      0.35      0.48       127
-        burp       1.00      0.21      0.35       118
-  discomfort       0.30      0.59      0.40       138
-      hunger       0.23      0.27      0.25       150
-       noise       0.92      0.95      0.94       200
-       tired       0.25      0.24      0.25       136
+  belly_pain       0.56      0.48      0.52       114
+        burp       0.47      0.40      0.43       106
+  discomfort       0.30      0.31      0.30       124
+      hunger       0.34      0.49      0.40       150
+       noise       0.95      0.98      0.97       196
+       tired       0.37      0.24      0.29       122
 
-    accuracy                           0.48       869
-   macro avg       0.58      0.44      0.44       869
-weighted avg       0.58      0.48      0.48       869
+    accuracy                           0.53       812
+   macro avg       0.50      0.48      0.48       812
+weighted avg       0.53      0.53      0.53       812

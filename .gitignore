@@ -47,7 +47,7 @@ venv.bak/
 !model/saved_models/cryingsense_cnn_best.pth
 
 # Processed data and features (can be regenerated)
-dataset/processed/
+dataset/preprocessed/
 *.npy
 
 # Experiment outputs
@@ -59,8 +59,10 @@ experiments/performance_reports/
 audio_test/recordings/
 *.mp3
 *.flac
-# Ignore .wav files only in processed dataset (allow raw .wav elsewhere)
-dataset/processed/**/*.wav
+## Ignore .wav files only in processed dataset (allow raw .wav elsewhere)
+#dataset/**/*.wav
+# Ignore .wav files in the entire project (if you want to keep raw .wav files, comment out the line above and uncomment this one)
+*.wav
 
 # OS
 .DS_Store

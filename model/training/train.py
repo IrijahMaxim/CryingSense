@@ -1,3 +1,19 @@
+"""
+CryingSense Model Training Script
+
+Trains the CNN on the TRAIN split (from dataset_split.json).
+The VAL split is used internally for early stopping and LR scheduling.
+Outputs: saved model weights + training curves/history in performance_reports/training_report/
+
+Pipeline order:
+  1. python scripts/preprocess_audio.py
+  2. python scripts/feature_extraction.py
+  3. python scripts/dataset_split.py
+  4. python model/training/train.py       <- this script
+  5. python model/training/validate.py
+  6. python model/training/evaluate.py
+"""
+
 import os
 import sys
 import json
@@ -8,7 +24,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from tqdm import tqdm
 
@@ -105,8 +120,8 @@ def get_feature_file_list(feature_base_dir):
     label_map = {label: i for i, label in enumerate(labels)}
     return file_list, label_map
 
-def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3, 
-                patience=10, save_dir='../saved_models', training_report_dir=None):
+def train_model(model, train_loader, val_loader, device, epochs=1000, lr=1e-3, 
+                patience=200, save_dir='../saved_models', training_report_dir=None):
     """
     Train the model with early stopping, learning rate scheduling, and comprehensive metrics.
     
@@ -395,31 +410,10 @@ if __name__ == "__main__":
         print(f"Loaded from JSON - Train: {len(train_files)}, Val: {len(val_files)}")
         print(f"Classes: {list(label_map.keys())}")
     else:
-        # Fallback: Load from single directory and split randomly
-        print("Warning: dataset_split.json not found, falling back to random split")
-        print("For reproducible splits, run: python scripts/dataset_split.py")
-        
-        feature_base_dir = feature_base_dirs['cleaned']
-        file_list, label_map = get_feature_file_list(feature_base_dir)
-        
-        if not file_list:
-            print("Error: No feature files found!")
-            print(f"Looking in: {os.path.abspath(feature_base_dir)}")
-            print("\nPlease run feature extraction first:")
-            print("  python scripts/feature_extraction.py")
-            sys.exit(1)
-        
-        print(f"Total files: {len(file_list)}")
-        print(f"Classes: {list(label_map.keys())}")
-        
-        # Split dataset randomly
-        train_files_raw, val_files_raw = train_test_split(
-            file_list, test_size=0.20, random_state=42, 
-            stratify=[get_label_from_path(f) for f in file_list]
-        )
-        # Convert to tuple format for compatibility
-        train_files = [(f, feature_base_dir) for f in train_files_raw]
-        val_files = [(f, feature_base_dir) for f in val_files_raw]
+        print("Error: dataset_split.json not found!")
+        print("Dataset splitting is handled by a separate script.")
+        print("Please run: python scripts/dataset_split.py")
+        sys.exit(1)
     
     print(f"Training samples: {len(train_files)}")
     print(f"Validation samples: {len(val_files)}")
@@ -456,5 +450,5 @@ if __name__ == "__main__":
     
     # Train model (save_dir is for model weights, training_report_dir is for training outputs)
     history = train_model(model, train_loader, val_loader, device, 
-                         epochs=50, lr=1e-3, patience=10, save_dir=save_dir, 
+                         epochs=1000, lr=1e-3, patience=200, save_dir=save_dir, 
                          training_report_dir=training_report_dir)

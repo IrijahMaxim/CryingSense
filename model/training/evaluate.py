@@ -1,11 +1,18 @@
 """
 CryingSense Model Evaluation Script
 
-Evaluates trained CNN model on test dataset with comprehensive metrics:
-- Accuracy, Precision, Recall, F1-score (per class and overall)
-- Confusion Matrix
-- Inference time measurement
-- Confidence threshold analysis
+Evaluates the trained model on the EVAL split (from dataset_split.json) — the held-out test set.
+Provides comprehensive final metrics: accuracy, precision, recall, F1, confusion matrix,
+inference time, and confidence threshold analysis.
+Outputs: results JSON + classification report + confusion matrix in performance_reports/evaluation_report/
+
+Pipeline order:
+  1. python scripts/preprocess_audio.py
+  2. python scripts/feature_extraction.py
+  3. python scripts/dataset_split.py
+  4. python model/training/train.py
+  5. python model/training/validate.py
+  6. python model/training/evaluate.py    <- this script
 """
 
 import os
@@ -18,9 +25,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from sklearn.metrics import (classification_report, confusion_matrix, 
-                            precision_recall_fscore_support, accuracy_score)
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import (classification_report, confusion_matrix,
+                             precision_recall_fscore_support, accuracy_score)
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -329,28 +335,10 @@ def main():
         
         print(f"Loaded from JSON - Eval samples: {len(eval_files)}")
     else:
-        # Fallback: Load from single directory and split randomly
-        print("\nWarning: dataset_split.json not found, falling back to random split")
-        print("For reproducible splits, run: python scripts/dataset_split.py")
-        
-        feature_base_dir = feature_base_dirs['cleaned']
-        file_list, label_map = get_file_list_and_labels(feature_base_dir)
-        
-        if not file_list:
-            print("Error: No feature files found!")
-            print(f"Looking in: {os.path.abspath(feature_base_dir)}")
-            print("\nPlease run feature extraction first:")
-            print("  python scripts/feature_extraction.py")
-            sys.exit(1)
-        
-        label_names = [name for name, _ in sorted(label_map.items(), key=lambda x: x[1])]
-        
-        # Split randomly for eval set
-        _, eval_files_raw = train_test_split(
-            file_list, test_size=0.10, random_state=42,
-            stratify=[get_label_from_path(f) for f in file_list]
-        )
-        eval_files = [(f, feature_base_dir) for f in eval_files_raw]
+        print("Error: dataset_split.json not found!")
+        print("Dataset splitting is handled by a separate script.")
+        print("Please run: python scripts/dataset_split.py")
+        sys.exit(1)
     
     print(f"Eval samples: {len(eval_files)}")
     print(f"Classes: {label_names}")

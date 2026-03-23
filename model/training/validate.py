@@ -1,3 +1,19 @@
+"""
+CryingSense Model Validation Script
+
+Evaluates the trained model on the VAL split (from dataset_split.json).
+Use this after training to check in-distribution performance on held-out validation data.
+Outputs: classification report + HTML confusion matrix in performance_reports/validation_report/
+
+Pipeline order:
+  1. python scripts/preprocess_audio.py
+  2. python scripts/feature_extraction.py
+  3. python scripts/dataset_split.py
+  4. python model/training/train.py
+  5. python model/training/validate.py    <- this script
+  6. python model/training/evaluate.py
+"""
+
 import os
 import sys
 import json
@@ -159,25 +175,10 @@ if __name__ == "__main__":
         print(f"Loaded from JSON - Val samples: {len(val_files)}")
         print(f"Classes: {list(label_map.keys())}")
     else:
-        # Fallback: Load from single directory
-        print("Warning: dataset_split.json not found, using all files")
-        print("For reproducible splits, run: python scripts/dataset_split.py")
-        
-        feature_base_dir = feature_base_dirs['cleaned']
-        file_list, label_map = get_feature_file_list(feature_base_dir)
-        
-        if not file_list:
-            print("Error: No feature files found!")
-            print(f"Looking in: {os.path.abspath(feature_base_dir)}")
-            print("\nPlease run feature extraction first:")
-            print("  python scripts/feature_extraction.py")
-            sys.exit(1)
-        
-        print(f"Total files: {len(file_list)}")
-        print(f"Classes: {list(label_map.keys())}")
-        
-        # Convert to tuple format
-        val_files = [(f, feature_base_dir) for f in file_list]
+        print("Error: dataset_split.json not found!")
+        print("Dataset splitting is handled by a separate script.")
+        print("Please run: python scripts/dataset_split.py")
+        sys.exit(1)
     
     print("="*60)
     
@@ -256,5 +257,101 @@ if __name__ == "__main__":
     cm = confusion_matrix(all_labels, all_preds)
     print(cm)
     print("="*60)
-    
+
+    # --- HTML Confusion Matrix ---
+    class_names = list(label_map.keys())
+    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)  # row-normalised (recall)
+
+    # Per-class F1 from the report dict
+    report_dict = classification_report(
+        all_labels, all_preds,
+        target_names=class_names,
+        output_dict=True
+    )
+
+    def _cell_style(row_idx, col_idx, value):
+        """Return inline CSS background colour for a confusion matrix cell."""
+        if row_idx == col_idx:                         # diagonal → green
+            intensity = int(255 * (1 - value * 0.6))   # deeper green for higher %
+            return f"background-color: rgb({intensity}, 210, {intensity}); font-weight: bold;"
+        elif value > 0:                                # off-diagonal non-zero → pink
+            intensity = int(255 * (1 - value * 0.5))
+            return f"background-color: rgb(255, {intensity}, {intensity});"
+        else:
+            return "background-color: #ffffff;"
+
+    rows_html = ""
+    for r_idx, r_name in enumerate(class_names):
+        cells = ""
+        for c_idx in range(len(class_names)):
+            pct = cm_norm[r_idx, c_idx]
+            label = f"{pct*100:.1f}%" if pct > 0 else "0%"
+            style = _cell_style(r_idx, c_idx, pct)
+            cells += f'<td style="{style} padding:10px 14px; text-align:center;">{label}</td>'
+        rows_html += (
+            f'<tr><td style="padding:10px 14px; font-weight:bold; '
+            f'text-align:left;">{r_name.upper()}</td>{cells}</tr>\n'
+        )
+
+    # F1 score footer row
+    f1_cells = ""
+    for c_name in class_names:
+        f1 = report_dict.get(c_name, {}).get("f1-score", 0.0)
+        f1_cells += (
+            f'<td style="padding:10px 14px; text-align:center; font-weight:bold; '
+            f'background-color:#f0f0f0;">{f1:.2f}</td>'
+        )
+
+    header_cells = "".join(
+        f'<th style="padding:10px 14px; text-align:center; '
+        f'background-color:#2d2d2d; color:#ffffff;">{n.upper()}</th>'
+        for n in class_names
+    )
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CryingSense – Validation Confusion Matrix</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; padding: 30px; background: #fafafa; }}
+    h2 {{ color: #2d2d2d; }}
+    table {{ border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }}
+    th, td {{ border: 1px solid #e0e0e0; }}
+    thead th:first-child {{ background-color: #2d2d2d; }}
+    .corner {{ background-color: #2d2d2d; }}
+    .row-header {{ background-color: #f5f5f5; color: #2d2d2d; }}
+    .f1-label {{ background-color: #f0f0f0; font-weight: bold; padding: 10px 14px; text-align: left; }}
+  </style>
+</head>
+<body>
+  <h2>CryingSense Model – Validation Confusion Matrix</h2>
+  <p style="color:#555;">Rows = actual class &nbsp;|&nbsp; Columns = predicted class &nbsp;|&nbsp; Values = row-normalised %</p>
+  <table>
+    <thead>
+      <tr>
+        <th class="corner" style="padding:10px 14px;"></th>
+        {header_cells}
+      </tr>
+    </thead>
+    <tbody>
+      {rows_html}
+      <tr>
+        <td class="f1-label">F1 SCORE</td>
+        {f1_cells}
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top:20px; color:#888; font-size:0.85em;">
+    Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+  </p>
+</body>
+</html>
+"""
+
+    cm_html_path = os.path.join(validation_report_dir, 'validation_confusion_matrix.html')
+    with open(cm_html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    print(f"Confusion matrix saved to: {cm_html_path}")
+
     logger.info("Validation Complete")

@@ -24,7 +24,7 @@ Examples:
         python cleanup_dataset.py --targets viz
 
     # Clean only one specific folder
-        python cleanup_dataset.py --targets cleaned
+        python cleanup_dataset.py --targets cleaned/viz/features/legacy
 
     # Clean everything (default behavior)
         python cleanup_dataset.py
