@@ -120,8 +120,8 @@ def get_feature_file_list(feature_base_dir):
     label_map = {label: i for i, label in enumerate(labels)}
     return file_list, label_map
 
-def train_model(model, train_loader, val_loader, device, epochs=1000, lr=1e-3, 
-                patience=200, save_dir='../saved_models', training_report_dir=None):
+def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3, 
+                patience=10, save_dir='../saved_models', training_report_dir=None):
     """
     Train the model with early stopping, learning rate scheduling, and comprehensive metrics.
     
@@ -450,5 +450,5 @@ if __name__ == "__main__":
     
     # Train model (save_dir is for model weights, training_report_dir is for training outputs)
     history = train_model(model, train_loader, val_loader, device, 
-                         epochs=1000, lr=1e-3, patience=200, save_dir=save_dir, 
+                         epochs=50, lr=1e-3, patience=10, save_dir=save_dir, 
                          training_report_dir=training_report_dir)
