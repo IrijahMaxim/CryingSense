@@ -140,7 +140,7 @@ def train_model(model, train_loader, val_loader, device, epochs=50, lr=1e-3,
     report_dir = training_report_dir if training_report_dir else save_dir
     logger = logging.getLogger(__name__)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     
     # Learning rate scheduler: ReduceLROnPlateau
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(

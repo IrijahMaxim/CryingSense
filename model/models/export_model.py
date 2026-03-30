@@ -297,13 +297,7 @@ def main():
     print("\nLoading model...")
     device = torch.device('cpu')  # Export on CPU for compatibility
     model = CryingSenseCNN(num_classes=args.num_classes).to(device)
-    
-    # Initialize _fc1 layer by running a dummy forward pass
-    # This is required because _fc1 is lazily initialized in the model
-    dummy_input = torch.randn(input_shape).to(device)
-    with torch.no_grad():
-        _ = model(dummy_input)
-    
+
     checkpoint = torch.load(args.model, map_location=device, weights_only=False)
     if 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])

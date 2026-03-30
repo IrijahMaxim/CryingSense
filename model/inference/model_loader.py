@@ -71,13 +71,6 @@ class ModelLoader:
         print(f"Loading standard PyTorch model from {self.model_path}")
         
         model = CryingSenseCNN(num_classes=self.num_classes).to(self.device)
-        
-        # Initialize _fc1 layer by running a dummy forward pass
-        # This is required because _fc1 is lazily initialized in the model
-        dummy_input = torch.randn(1, 4, 128, 216).to(self.device)
-        with torch.no_grad():
-            _ = model(dummy_input)
-        
         checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
         
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
@@ -98,13 +91,7 @@ class ModelLoader:
         print(f"Loading quantized PyTorch model from {self.model_path}")
         
         model = CryingSenseCNN(num_classes=self.num_classes)
-        
-        # Initialize _fc1 layer by running a dummy forward pass
-        # This is required because _fc1 is lazily initialized in the model
-        dummy_input = torch.randn(1, 4, 128, 216)
-        with torch.no_grad():
-            _ = model(dummy_input)
-        
+
         # Apply dynamic quantization
         model = torch.quantization.quantize_dynamic(
             model,
