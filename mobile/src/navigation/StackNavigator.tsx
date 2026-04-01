@@ -5,7 +5,7 @@ import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import EditBabyProfileScreen from '../screens/EditBabyProfileScreen';
 import AnalysisResultScreen from '../screens/AnalysisResultScreen';
-import HistoryScreen from '../screens/HistoryScreen';
+import HistoryAndInsightsScreen from '../screens/HistoryScreen';
 
 export type RootStackParamList = {
   HomeScreen: undefined;
@@ -24,7 +24,7 @@ export default function AppStack() {
       <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
       <Stack.Screen name="EditBabyProfileScreen" component={EditBabyProfileScreen} />
       <Stack.Screen name="AnalysisResultScreen" component={AnalysisResultScreen} />
-      <Stack.Screen name="HistoryScreen" component={HistoryScreen} />
+      <Stack.Screen name="HistoryScreen" component={HistoryAndInsightsScreen} />
     </Stack.Navigator>
   );
 }

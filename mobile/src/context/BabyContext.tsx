@@ -1,5 +1,6 @@
 // context/BabyContext.tsx
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import FirebaseService, { FilteredCryEvent } from '../services/FirebaseService';
 
 type BabyProfile = {
   name: string;
@@ -24,6 +25,8 @@ type BabyContextType = {
   getTodayEvents: () => CryEvent[];
   getTopNeed: () => string;
   getTotalRecordings: () => number;
+  refreshCryEvents: () => Promise<void>;
+  isLoading: boolean;
 };
 
 const BabyContext = createContext<BabyContextType | undefined>(undefined);
@@ -114,7 +117,56 @@ const sampleCryEvents: CryEvent[] = [
 
 export const BabyProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<BabyProfile>({ name: 'Baby', ageMonths: 6 });
-  const [cryEvents, setCryEvents] = useState<CryEvent[]>(sampleCryEvents);
+  const [cryEvents, setCryEvents] = useState<CryEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const firebaseService = FirebaseService.getInstance();
+  
+  // Load cry events from Firebase on component mount
+  useEffect(() => {
+    loadCryEvents();
+    
+    // Set up real-time listener
+    firebaseService.setupRealtimeListener((events) => {
+      const formattedEvents = events.map(event => ({
+        id: event.id,
+        category: event.category,
+        timestamp: event.timestamp,
+        need: event.category,
+        confidence: Math.round(event.confidence * 100),
+        duration: event.duration
+      }));
+      setCryEvents(formattedEvents);
+    });
+    
+    return () => {
+      firebaseService.stopRealtimeListener();
+    };
+  }, []);
+  
+  const loadCryEvents = async () => {
+    setIsLoading(true);
+    try {
+      const events = await firebaseService.fetchCryingHistory();
+      const formattedEvents = events.map(event => ({
+        id: event.id,
+        category: event.category,
+        timestamp: event.timestamp,
+        need: event.category,
+        confidence: Math.round(event.confidence * 100),
+        duration: event.duration
+      }));
+      setCryEvents(formattedEvents);
+    } catch (error) {
+      console.error('Error loading cry events:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const refreshCryEvents = async () => {
+    await loadCryEvents();
+  };
 
   const addCryEvent = (event: CryEvent) => {
     setCryEvents([...cryEvents, event]);
@@ -142,7 +194,17 @@ export const BabyProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <BabyContext.Provider value={{ profile, setProfile, cryEvents, addCryEvent, getTodayEvents, getTopNeed, getTotalRecordings }}>
+    <BabyContext.Provider value={{ 
+      profile, 
+      setProfile, 
+      cryEvents, 
+      addCryEvent, 
+      getTodayEvents, 
+      getTopNeed, 
+      getTotalRecordings,
+      refreshCryEvents,
+      isLoading
+    }}>
       {children}
     </BabyContext.Provider>
   );

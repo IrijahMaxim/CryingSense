@@ -1,10 +1,9 @@
 import { StyleSheet } from 'react-native';
-import { Colors } from '../../constants/theme';
-import { useAppColorScheme } from '../../hooks/useAppColorScheme';
+import { useTheme } from '../context/ThemeContext';
+import { Colors } from '../constants/theme';
 
 export function useAppStyles() {
-  const { colorScheme } = useAppColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { isDark } = useTheme();
 
   return StyleSheet.create({
     // ========================
@@ -13,8 +12,9 @@ export function useAppStyles() {
     container: {
       flex: 1,
       backgroundColor: isDark ? Colors.dark.background : Colors.light.background,
-      paddingHorizontal: 16,
-      paddingTop: 12,
+      paddingHorizontal: 0,
+      paddingTop: 0,
+      marginBottom: 20,
     },
     header: {
       flexDirection: 'row',
@@ -25,16 +25,16 @@ export function useAppStyles() {
       marginBottom: 20,
     },
     sectionTitle: {
-      fontSize: 18,
+      fontSize: 24,
       fontWeight: 'bold',
-      color: isDark ? Colors.dark.text : Colors.light.text,
-      marginBottom: 12,
-      marginTop: 8,
+      color: isDark ? Colors.light.text : Colors.dark.text,
+      marginBottom: 16,
     },
     cardTitle: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: '600',
-      color: isDark ? Colors.dark.text : Colors.light.text,
+      color: isDark ? Colors.light.text : Colors.dark.text,
+      marginBottom: 8,
     },
     textInput: {
       backgroundColor: isDark ? '#2a2a2a' : 'white',
@@ -47,27 +47,29 @@ export function useAppStyles() {
       marginBottom: 12,
     },
     saveButton: {
-      backgroundColor: '#60A5FA',
-      padding: 14,
+      backgroundColor: Colors.light.primary,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
       borderRadius: 8,
       alignItems: 'center',
+      justifyContent: 'center',
       marginVertical: 20,
     },
     saveButtonText: {
-      color: 'white',
+      color: '#fff',
       fontSize: 16,
       fontWeight: '600',
     },
     card: {
-      backgroundColor: isDark ? '#2a2a2a' : 'white',
+      backgroundColor: isDark ? Colors.dark.surface : Colors.light.surface,
+      borderRadius: 12,
       padding: 16,
-      borderRadius: 8,
-      marginBottom: 12,
+      marginBottom: 16,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: isDark ? 0.3 : 0.1,
-      shadowRadius: 2,
-      elevation: 2,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
     },
     preferenceRow: {
       flexDirection: 'row',

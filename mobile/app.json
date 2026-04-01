@@ -3,15 +3,10 @@
     "name": "CryingSense",
     "slug": "CryingSense",
     "version": "1.0.0",
+    "main": "index.js",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
-
-    "splash": {
-      "image": "./assets/images/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#60A5FA"
-    },
 
     "assetBundlePatterns": [
       "**/*"

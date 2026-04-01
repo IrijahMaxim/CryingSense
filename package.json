@@ -1,20 +1,19 @@
 {
   "name": "cryingsense",
   "version": "1.0.0",
-  "description": "",
+  "description": "CryingSense - Baby cry detection and monitoring system",
   "main": "index.js",
   "scripts": {
+    "dev": "cd mobile && npx expo start",
+    "dev:web": "cd mobile && npx expo start --web",
+    "dev:android": "cd mobile && npx expo start --android",
+    "dev:ios": "cd mobile && npx expo start --ios",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["baby", "cry", "detection", "monitoring", "firebase", "react-native", "expo"],
+  "author": "CryingSense Team",
   "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "expo": "^55.0.5"
-  },
   "devDependencies": {
-    "@types/react": "~19.2.10",
     "typescript": "~5.9.2"
   }
 }
