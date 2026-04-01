@@ -273,10 +273,51 @@ def split_dataset(feature_base_dir, output_dir, train_ratio=0.60, val_ratio=0.20
     return split_data
 
 
-def get_custom_split_ratios():
+def get_available_file_limits_by_class(datasets_to_process):
+    """
+    Calculate available file counts per class from selected dataset feature subfolders.
+
+    Uses each dataset's MFCC subfolder as the source of truth.
+
+    Args:
+        datasets_to_process: List of tuples (dataset_name, feature_dir, class_filter)
+
+    Returns:
+        tuple: (aggregate_counts, per_dataset_counts)
+            - aggregate_counts: dict {class_name: total_available_files}
+            - per_dataset_counts: dict {dataset_name: {class_name: available_files}}
+    """
+    all_classes = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise', 'speech']
+    aggregate_counts = defaultdict(int)
+    per_dataset_counts = {}
+
+    for dataset_name, data_dir, class_filter in datasets_to_process:
+        classes = class_filter if class_filter else all_classes
+        dataset_counts = {}
+        mfcc_dir = os.path.join(data_dir, 'mfcc')
+
+        for class_name in classes:
+            class_dir = os.path.join(mfcc_dir, class_name)
+            if not os.path.exists(class_dir):
+                dataset_counts[class_name] = 0
+                continue
+
+            count = len([f for f in os.listdir(class_dir) if f.endswith('.npy')])
+            dataset_counts[class_name] = count
+            aggregate_counts[class_name] += count
+
+        per_dataset_counts[dataset_name] = dataset_counts
+
+    return dict(aggregate_counts), per_dataset_counts
+
+
+def get_custom_split_ratios(datasets_to_process):
     """
     Prompt user for custom split ratios and file count limits.
     
+    Args:
+        datasets_to_process: List of tuples (dataset_name, feature_dir, class_filter)
+
     Returns:
         tuple: (train_ratio, val_ratio, eval_ratio, max_files_per_class)
     """
@@ -352,10 +393,26 @@ def get_custom_split_ratios():
                 
                 elif limit_choice == '2':
                     try:
+                        available_by_class, available_by_dataset = get_available_file_limits_by_class(datasets_to_process)
+                        print("\nMaximum available files per class (from selected dataset subfolders):")
+                        for dataset_name, class_counts in available_by_dataset.items():
+                            print(f"  [{dataset_name}]")
+                            for class_name in sorted(class_counts.keys()):
+                                print(f"    {class_name:12s}: {class_counts[class_name]}")
+                        print("  [combined]")
+                        for class_name in sorted(available_by_class.keys()):
+                            print(f"    {class_name:12s}: {available_by_class[class_name]}")
+
                         limit = int(input("\nEnter file limit per class (e.g., 100): ").strip())
                         if limit <= 0:
                             print("\n❌ Error: Limit must be greater than 0")
                             continue
+
+                        if available_by_class:
+                            max_uniform = min(v for v in available_by_class.values() if v > 0) if any(v > 0 for v in available_by_class.values()) else 0
+                            if max_uniform > 0 and limit > max_uniform:
+                                print(f"\n⚠️  Note: limit {limit} exceeds the smallest non-zero class maximum ({max_uniform}).")
+
                         print(f"\n✓ Using {limit} files per class")
                         max_files = limit
                         break
@@ -365,13 +422,28 @@ def get_custom_split_ratios():
                 
                 elif limit_choice == '3':
                     print("\nEnter file limits for each class (or 0 to use all):")
-                    classes = ['belly_pain', 'burp', 'discomfort', 'hunger', 'tired', 'noise', 'speech']
+                    available_by_class, available_by_dataset = get_available_file_limits_by_class(datasets_to_process)
+                    classes = sorted(available_by_class.keys())
+
+                    print("\nMaximum available files per class (from selected dataset subfolders):")
+                    for dataset_name, class_counts in available_by_dataset.items():
+                        print(f"  [{dataset_name}]")
+                        for class_name in sorted(class_counts.keys()):
+                            print(f"    {class_name:12s}: {class_counts[class_name]}")
+                    print("\n  [combined]")
+                    for class_name in classes:
+                        print(f"    {class_name:12s}: {available_by_class[class_name]}")
+
                     max_files = {}
                     
                     try:
+                        print("\nEnter file limits for each class")
                         for class_name in classes:
                             limit = int(input(f"  {class_name}: ").strip())
                             if limit > 0:
+                                class_max = available_by_class.get(class_name, 0)
+                                if class_max > 0 and limit > class_max:
+                                    print(f"    ⚠️  Note: {limit} exceeds available max ({class_max}) for {class_name}")
                                 max_files[class_name] = limit
                         
                         # Show summary
@@ -490,7 +562,7 @@ Output: dataset_split.json
     
     # Get split ratios and file limits (default or custom)
     if args.custom_split:
-        train_ratio, val_ratio, eval_ratio, max_files_per_class = get_custom_split_ratios()
+        train_ratio, val_ratio, eval_ratio, max_files_per_class = get_custom_split_ratios(datasets_to_process)
     else:
         train_ratio, val_ratio, eval_ratio, max_files_per_class = 0.60, 0.20, 0.20, None
     
