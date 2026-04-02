@@ -5,10 +5,10 @@ Orchestrates the full loop:
   1. Listen on microphone → .wav
   2. Audio preprocessing (normalise, trim, resample)
   3. Feature extraction (4-channel mel-spectrogram tensor)
-  4. Quantized CNN inference
+  4. ONNX inference
   5. Push result to:
         • Android app  (WebSocket)
-        • MongoDB       (audio_files, audio_sessions, cry_classifications, device_registrations)
+      • Firebase      (audio_files, audio_sessions, cry_classifications, device_registrations)
 
 Runs an asyncio event loop with:
   - continuous MIC listener (blocking capture in thread-pool)
@@ -51,7 +51,10 @@ from config import (
 # Pipeline components
 from audio_preprocessor import AudioPreprocessor
 from feature_extractor import FeatureExtractor
-from model_loader import ModelLoader
+try:
+    from .model import CryingSenseModel
+except ImportError:
+    from model import CryingSenseModel
 from predictor import Predictor
 from database_handler import DatabaseHandler
 from app_notifier import AppNotifier
@@ -116,7 +119,7 @@ class CryingSensePipeline:
         # Components
         self.preprocessor = AudioPreprocessor()
         self.extractor = FeatureExtractor()
-        self.model = ModelLoader(MODEL_PATH, NUM_CLASSES).load()
+        self.model = CryingSenseModel(MODEL_PATH).load()
         self.predictor = Predictor(self.model)
         self.db = DatabaseHandler()
         self.notifier: AppNotifier = None  # type: ignore[assignment]

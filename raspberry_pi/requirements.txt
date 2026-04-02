@@ -1,8 +1,7 @@
 # CryingSense — Raspberry Pi 3B+ dependencies
 # Install: pip install -r requirements.txt
 #
-# onnxruntime is the preferred inference backend on ARM.
-# PyTorch is only needed if you use .pt / .pth models.
+# ONNX is the only inference backend used in the Raspberry Pi pipeline.
 
 # ── Core audio ───────────────────────────────────────────────
 numpy>=1.24,<2
@@ -13,11 +12,11 @@ PyAudio>=0.2.13
 # ── Noise reduction (optional but recommended) ──────────────
 noisereduce>=3.0
 
-# ── Inference — pick ONE backend (ONNX recommended for Pi) ──
+# ── Inference ───────────────────────────────────────────────
 onnxruntime>=1.17              # ~60 MB, fast on ARM Cortex-A53
 
-# ── Database ─────────────────────────────────────────────────
-pymongo[srv]>=4.6
+# ── Database / Storage ──────────────────────────────────────
+firebase-admin>=6.5
 
 # ── Network / App communication ─────────────────────────────
 websockets>=12.0

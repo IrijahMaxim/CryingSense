@@ -9,9 +9,9 @@ raspberry_pi/
 ├── config.py                # Central configuration (audio, model, DB, network)
 ├── audio_preprocessor.py    # Normalize / trim / resample incoming .wav
 ├── feature_extractor.py     # Mel-spectrogram-based 4-channel feature builder
-├── model_loader.py          # Load quantized ONNX or TorchScript CNN
+├── model.py                 # ONNX model runtime (single inference entry)
 ├── predictor.py             # Run inference, filter noise, build result dict
-├── database_handler.py      # MongoDB handler (audio_files, audio_sessions, cry_classifications, device_registrations)
+├── database_handler.py      # Firebase handler (audio_files, audio_sessions, cry_classifications, device_registrations)
 ├── app_notifier.py          # Push predictions to Android app (WebSocket / HTTP)
 ├── recording_trigger.py     # Accept record-start signals from the Android app
 ├── pipeline.py              # Main orchestrator — ties everything together
@@ -34,10 +34,10 @@ chmod +x setup.sh
 ./setup.sh            # installs venv, deps, systemd service
 
 # 3. Place your exported model
-#    Copy a quantized ONNX (.onnx) or TorchScript (.pt) model into saved_models/
+#    Copy an ONNX (.onnx) model into saved_models/
 
-# 4. Create .env with your MongoDB URI (see config.py for all env vars)
-echo 'MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/cryingsense_db' > .env
+# 4. Create .env with your Firebase credentials (see config.py for all env vars)
+echo 'FIREBASE_CREDENTIALS_PATH=/home/pi/cryingsense/firebase-service-account.json' > .env
 
 # 5. Run
 python pipeline.py            # foreground
@@ -68,3 +68,11 @@ The pipeline exposes a lightweight HTTP + WebSocket API on port **8765** (config
 | `/record` | POST | Trigger on-demand recording |
 
 The Android developer can adjust `APP_API_PORT` and `APP_API_HOST` in `config.py` or via environment variables.
+
+## Firebase Notes
+
+Set these environment variables in `.env` when persistence is enabled:
+
+- `FIREBASE_CREDENTIALS_PATH` (service account JSON file path)
+- `FIREBASE_PROJECT_ID` (optional override)
+- `FIREBASE_STORAGE_BUCKET` (optional; enables WAV upload to Cloud Storage)

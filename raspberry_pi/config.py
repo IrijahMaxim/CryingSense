@@ -24,13 +24,12 @@ SAVED_MODELS_DIR = RPI_DIR / "saved_models"
 RECORDINGS_DIR = RPI_DIR / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Model file — auto-detect first available format
+# Model file — ONNX only
 MODEL_PATH: str = os.getenv("MODEL_PATH", "")
 if not MODEL_PATH:
     for candidate in [
         SAVED_MODELS_DIR / "cryingsense_model.onnx",
-        SAVED_MODELS_DIR / "cryingsense_model.pt",
-        SAVED_MODELS_DIR / "cryingsense_quantized.pth",
+        SAVED_MODELS_DIR / "cryingsense_cnn_best.onnx",
     ]:
         if candidate.exists():
             MODEL_PATH = str(candidate)
@@ -64,23 +63,16 @@ NOISE_REDUCE: bool = os.getenv("NOISE_REDUCE", "true").lower() == "true"
 MIC_DEVICE_INDEX: int = int(os.getenv("MIC_DEVICE_INDEX", "0"))
 LISTEN_CHUNK: int = int(os.getenv("LISTEN_CHUNK", "1024"))
 
-# ── Database (MongoDB Atlas) ────────────────────────────────────────────────
-MONGO_URI: str = os.getenv(
-    "MONGO_URI",
-    "mongodb://localhost:27017",
-)
-MONGO_DATABASE: str = os.getenv("MONGO_DATABASE", "cryingsense_db")
+# ── Database (Firebase) ─────────────────────────────────────────────────────
+FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "")
+FIREBASE_CREDENTIALS_PATH: str = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
+FIREBASE_STORAGE_BUCKET: str = os.getenv("FIREBASE_STORAGE_BUCKET", "")
 
-# Collection names — matching the existing schema
+# Collection names
 COL_AUDIO_FILES: str = "audio_files"
 COL_AUDIO_SESSIONS: str = "audio_sessions"
 COL_CRY_CLASSIFICATIONS: str = "cry_classifications"
 COL_DEVICE_REGISTRATIONS: str = "device_registrations"
-
-# Pool sizes tuned for 1 GB RAM
-MONGO_MAX_POOL: int = int(os.getenv("MONGO_MAX_POOL", "5"))
-MONGO_MIN_POOL: int = int(os.getenv("MONGO_MIN_POOL", "1"))
-MONGO_TIMEOUT_MS: int = int(os.getenv("MONGO_TIMEOUT_MS", "5000"))
 
 # ── Device ───────────────────────────────────────────────────────────────────
 DEVICE_TYPE: str = os.getenv("DEVICE_TYPE", "raspberry_pi")
